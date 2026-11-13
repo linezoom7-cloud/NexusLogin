@@ -1,0 +1,31 @@
+name: NexusLogin
+version: '${version}'
+main: dev.nexus.login.NexusLoginPlugin
+api-version: '1.21'
+author: Nexus Development
+description: High-performance, asynchronous Argon2id PIN authentication system with procedural neon GUI.
+load: POSTWORLD
+
+# Paper bu bağımlılıkları (ve transitive bağımlılıklarını) ilk açılışta Maven Central'dan
+# indirip eklentiye özel bir classloader'a yükler. Böylece JAR küçük kalır ve JNA bozulmaz.
+# SQLite sürücüsü (org.xerial:sqlite-jdbc) Paper ile birlikte zaten gelir.
+libraries:
+  - com.zaxxer:HikariCP:${hikariVersion}
+  - de.mkammerer:argon2-jvm:${argon2Version}
+  - org.mariadb.jdbc:mariadb-java-client:${mariadbVersion}
+
+commands:
+  giris:
+    description: Giriş menüsünü yeniden açar.
+    aliases: [login, l]
+  pin:
+    description: PIN kodunu değiştirir.
+    aliases: [pindegistir, changepin]
+  nexus:
+    description: Nexus Login yönetim komutları.
+    permission: nexuslogin.admin
+
+permissions:
+  nexuslogin.admin:
+    description: /nexus yönetim komutları.
+    default: op

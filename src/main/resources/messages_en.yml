@@ -1,0 +1,206 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 NEXUS LOGIN — Messages (MiniMessage)         ║
+# ╚══════════════════════════════════════════════════════════════╝
+# Palette tags:  <neon> #a855f7   <volt> #3b82f6   <glow> #22d3ee
+#                <success> #4ade80  <danger> #f472b6  <muted> #94a3b8
+# In any message <prefix> can be used. After edits: /nexus reload
+
+prefix: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>»</dark_gray>"
+
+title:
+  intro: "<gradient:${gradient}><bold><brand></bold></gradient>"
+  intro-login: "<muted>Portal locked •</muted> <glow>Enter your PIN code</glow>"
+  intro-register: "<muted>Welcome traveler •</muted> <glow>Set your PIN code</glow>"
+  # Animated title text: write PLAIN text (no MiniMessage code; colors are built in code).
+  success-line: "PORTAL OPENED"
+  premium-line: "PREMIUM LOGIN"
+  success-sub: "<muted>Welcome back</muted> <dark_gray>•</dark_gray> <glow><player></glow>"
+  registered-sub: "<muted>Registration complete</muted> <dark_gray>•</dark_gray> <glow><player></glow> <success>✔</success>"
+  remembered-sub: "<muted>Session restored</muted> <dark_gray>•</dark_gray> <glow><player></glow>"
+  changed-sub: "<muted>PIN updated</muted> <dark_gray>•</dark_gray> <success>✔</success>"
+  premium-sub: "<success>Mojang account verified</success> <dark_gray>•</dark_gray> <muted>no PIN needed</muted>"
+
+bossbar:
+  suffix: " <dark_gray>•</dark_gray> <muted>Time left:</muted> <glow><seconds>s</glow>"
+
+actionbar:
+  locked: "<danger>✖</danger> <muted>Please log in first •</muted> <glow>/login</glow>"
+  menu-closed: "<muted>Reopening menu shortly •</muted> <glow>/login</glow>"
+  pack-loading: "<muted>Loading <brand> interface pack…</muted>"
+  pack-failed: "<danger>Pack unavailable</danger> <muted>• using fallback menu</muted>"
+  premium: "<success>✔ Premium account verified</success>"
+
+pin:
+  wrong: "<danger>Incorrect PIN.</danger> <muted>Attempts left:</muted> <glow><remaining></glow>"
+  mismatch: "<danger>PINs did not match.</danger> <muted>Please try again.</muted>"
+  too-short: "<danger>PIN must be at least <min> digits long.</danger>"
+  too-long: "<danger>PIN cannot exceed <max> digits.</danger>"
+  not-numeric: "<danger>PIN must contain numbers only.</danger>"
+  repeated: "<danger>Repeated PINs (111111, 121212) are not allowed.</danger>"
+  sequential: "<danger>Sequential PINs (123456, 987654) are not allowed.</danger>"
+  common: "<danger>This PIN is too common, please pick another.</danger>"
+  ip-limit: "<danger>Maximum account limit reached for this IP (<max>).</danger>"
+  internal-error: "<danger>An internal error occurred, please try again.</danger>"
+  changed: "<prefix> <success>Your PIN code has been updated.</success>"
+
+menu:
+  title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Lock"
+  mode:
+    login:
+      name: "<glow><bold>Log In</bold></glow>"
+      lore:
+        - "<muted>Enter your account PIN code.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Entered:</muted> <glow><length></glow><muted>/<max></muted>"
+    register:
+      name: "<neon><bold>Register</bold></neon> <muted>• step 1/2</muted>"
+      lore:
+        - "<muted>Choose a</muted> <glow><min>-<max></glow> <muted>digit PIN code.</muted>"
+        - "<muted>Repeated or sequential PINs are rejected.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Entered:</muted> <glow><length></glow><muted>/<max></muted>"
+    register-confirm:
+      name: "<neon><bold>Register</bold></neon> <muted>• step 2/2</muted>"
+      lore:
+        - "<muted>Re-enter the same PIN to confirm.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Entered:</muted> <glow><length></glow><muted>/<max></muted>"
+    change-current:
+      name: "<volt><bold>Change PIN</bold></volt> <muted>• step 1/3</muted>"
+      lore:
+        - "<muted>Enter your current PIN code first.</muted>"
+    change-new:
+      name: "<volt><bold>Change PIN</bold></volt> <muted>• step 2/3</muted>"
+      lore:
+        - "<muted>Enter your new</muted> <glow><min>-<max></glow> <muted>digit PIN.</muted>"
+    change-confirm:
+      name: "<volt><bold>Change PIN</bold></volt> <muted>• step 3/3</muted>"
+      lore:
+        - "<muted>Re-enter the new PIN to confirm.</muted>"
+  busy:
+    name: "<volt><bold>Verifying…</bold></volt>"
+    lore:
+      - "<muted>Computing Argon2id, please wait.</muted>"
+  notice-lore:
+    - "<muted>Press any button to continue.</muted>"
+  digit: "<gradient:#a855f7:#22d3ee><bold><digit></bold></gradient>"
+  digit-lore:
+    - "<muted>Click:</muted> <glow>add digit</glow>"
+  filled: "<glow>●</glow>"
+  empty: "<dark_gray>○</dark_gray>"
+  delete: "<danger><bold>⌫ Delete</bold></danger>"
+  delete-lore:
+    - "<muted>Click:</muted> <glow>delete last digit</glow>"
+    - "<muted>Shift + Click:</muted> <glow>clear all</glow>"
+  confirm: "<success><bold>✔ Confirm</bold></success>"
+  confirm-lore:
+    - "<muted>Click to unlock the portal.</muted>"
+  confirm-locked: "<#64748b><bold>✔ Confirm</bold>"
+  confirm-locked-lore:
+    - "<muted>Enter at least</muted> <glow><min></glow> <muted>digits.</muted>"
+
+chat:
+  join: "<prefix> <success>▶</success> <glow><player></glow> <dark_gray>•</dark_gray> <muted>connected to the portal</muted>"
+  quit: "<prefix> <danger>◀</danger> <glow><player></glow> <dark_gray>•</dark_gray> <muted>left the portal</muted>"
+
+kick:
+  # The disconnect screen is drawn by the client and the resource pack may not be loaded yet,
+  # so ONLY the default font is used (no custom glyphs). Lines are left-aligned.
+  header: |-
+    <gradient:${gradient}><bold>✦  <brand_spaced>  ✦</bold></gradient>
+    <dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>
+
+  footer: |-
+
+    <dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>
+    <gradient:${gradient_secondary}>secure login</gradient> <dark_gray>•</dark_gray> <muted><brand></muted>
+
+  timeout: |-
+    <neon>✦</neon> <glow><bold>LOGIN TIME EXPIRED</bold></glow>
+
+    <muted>The portal is still waiting.</muted>
+    <glow>You may reconnect now.</glow>
+
+  locked: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>TEMPORARILY LOCKED</bold></gradient>
+
+    <muted>Too many failed attempts.</muted>
+    <glow>Try again in <minutes> minute(s).</glow>
+
+  not-ready: |-
+    <neon>◌</neon> <glow><bold>SERVER IS WARMING UP</bold></glow>
+
+    <muted>The account service is not ready yet.</muted>
+    <glow>Please retry in a few seconds.</glow>
+
+  database: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>AUTH SERVICE UNREACHABLE</bold></gradient>
+
+    <muted>The database is not responding right now.</muted>
+    <glow>Please try again shortly.</glow>
+
+  name-taken: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>NAME ALREADY REGISTERED</bold></gradient>
+
+    <muted>This name belongs to</muted> <glow><registered></glow><muted>.</muted>
+    <glow>Please join with the exact letter casing.</glow>
+
+  already-online: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>THIS NAME IS ALREADY ONLINE</bold></gradient>
+
+    <muted>A player with this name is already connected.</muted>
+    <glow>Wait for the current session to end.</glow>
+
+  unregistered: |-
+    <neon>✦</neon> <glow><bold>YOUR ACCOUNT WAS RESET</bold></glow>
+
+    <muted>An administrator unregistered this account.</muted>
+    <glow>Reconnect to set a new PIN.</glow>
+
+  internal: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>AN UNEXPECTED ERROR OCCURRED</bold></gradient>
+
+    <muted>This one is on us, not you.</muted>
+    <glow>Please try again in a moment.</glow>
+
+command:
+  player-only: "<prefix> <danger>This command can only be used by players in-game.</danger>"
+  already-logged-in: "<prefix> <muted>You are already logged in.</muted>"
+  must-login: "<prefix> <danger>You must log in first.</danger>"
+  no-account: "<prefix> <danger>You do not have a registered account.</danger>"
+  admin:
+    usage:
+      - "<prefix> <glow>Administrative Commands</glow>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus info [player]</neon> <muted>— view account details</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unregister [player]</neon> <muted>— delete account (PIN reset)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus resetpass [player]</neon> <muted>— reset account (including lockout)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unlock [player]</neon> <muted>— clear brute-force lockout (keeps account)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unlockip [ip]</neon> <muted>— clear a brute-force penalty for an IP</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [player]</neon> <muted>— bypass PIN check and authenticate</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— reload configuration and language</muted>"
+    reloaded: "<prefix> <success>Configuration and messages reloaded.</success>"
+    reloaded-restart: "<prefix> <success>Configuration reloaded.</success> <muted>Database, hashing, resource-pack and audit changes require a full server restart.</muted>"
+    reload-failed: "<prefix> <danger>Reload failed: <error></danger>"
+    delete-failed: "<prefix> <danger>Account for <player> could not be deleted. Check the console.</danger>"
+    not-found: "<prefix> <danger>No registered account found for <player>.</danger>"
+    not-online: "<prefix> <danger><player> is not currently online.</danger>"
+    error: "<prefix> <danger>Operation failed: <error></danger>"
+    info:
+      - "<prefix> <glow><player></glow> <muted>Account Details</muted>"
+      - "<dark_gray>•</dark_gray> <muted>UUID:</muted> <volt><uuid></volt>"
+      - "<dark_gray>•</dark_gray> <muted>Premium:</muted> <glow><premium></glow>  <muted>PIN:</muted> <glow><has_pin></glow>"
+      - "<dark_gray>•</dark_gray> <muted>Reg IP:</muted> <volt><reg_ip></volt>  <muted>Last IP:</muted> <volt><last_ip></volt>"
+    unregistered: "<prefix> <success>Account for <player> has been deleted.</success>"
+    resetpass: "<prefix> <success>Account for <player> has been reset; PIN and lockout cleared.</success>"
+    unlocked: "<prefix> <success>Cleared the brute-force lockout for <player>.</success>"
+    unlocked-ip: "<prefix> <success>Cleared the brute-force penalty for IP <ip>.</success>"
+    forcelogin: "<prefix> <success><player> has been forced to log in.</success>"
+
+# Short values used inside admin placeholders (e.g. /nexus info).
+common:
+  "yes": "yes"
+  "no": "no"
+  present: "set"
+  absent: "not set"
+  none: "none"
+

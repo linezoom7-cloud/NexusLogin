@@ -1,0 +1,205 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 NEXUS LOGIN — Mesajlar (MiniMessage)          ║
+# ╚══════════════════════════════════════════════════════════════╝
+# Palet etiketleri:  <neon> #a855f7   <volt> #3b82f6   <glow> #22d3ee
+#                    <success> #4ade80  <danger> #f472b6  <muted> #94a3b8
+# Her mesajda <prefix> kullanılabilir. Değişiklikten sonra: /nexus reload
+
+prefix: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>»</dark_gray>"
+
+title:
+  intro: "<gradient:${gradient}><bold><brand></bold></gradient>"
+  intro-login: "<muted>Portal kilitli •</muted> <glow>PIN kodunu gir</glow>"
+  intro-register: "<muted>Yeni bir yolcu •</muted> <glow>kendine bir PIN belirle</glow>"
+  # Animasyonlu başlık metni: DÜZ metin yaz (MiniMessage kodu kullanma, renkler kodda üretilir).
+  success-line: "PORTAL AÇILDI"
+  premium-line: "PREMIUM GİRİŞ"
+  success-sub: "<muted>Tekrar hoş geldin</muted> <dark_gray>•</dark_gray> <glow><player></glow>"
+  registered-sub: "<muted>Kaydın tamamlandı</muted> <dark_gray>•</dark_gray> <glow><player></glow> <success>✔</success>"
+  remembered-sub: "<muted>Oturumun hatırlandı</muted> <dark_gray>•</dark_gray> <glow><player></glow>"
+  changed-sub: "<muted>PIN kodun güncellendi</muted> <dark_gray>•</dark_gray> <success>✔</success>"
+  premium-sub: "<success>Mojang hesabın doğrulandı</success> <dark_gray>•</dark_gray> <muted>şifre gerekmedi</muted>"
+
+bossbar:
+  suffix: " <dark_gray>•</dark_gray> <muted>Kalan süre</muted> <glow><seconds>s</glow>"
+
+actionbar:
+  locked: "<danger>✖</danger> <muted>Önce giriş yapmalısın •</muted> <glow>/giris</glow>"
+  menu-closed: "<muted>Menü birazdan yeniden açılacak •</muted> <glow>/giris</glow>"
+  pack-loading: "<muted><brand> arayüz paketi yükleniyor…</muted>"
+  pack-failed: "<danger>Paket yüklenemedi</danger> <muted>• yedek menü kullanılıyor</muted>"
+  premium: "<success>✔ Premium hesap doğrulandı</success>"
+
+pin:
+  wrong: "<danger>Hatalı PIN.</danger> <muted>Kalan hak:</muted> <glow><remaining></glow>"
+  mismatch: "<danger>PIN'ler eşleşmedi.</danger> <muted>Baştan belirle.</muted>"
+  too-short: "<danger>PIN en az <min> haneli olmalı.</danger>"
+  too-long: "<danger>PIN en fazla <max> haneli olabilir.</danger>"
+  not-numeric: "<danger>PIN yalnızca rakamlardan oluşmalı.</danger>"
+  repeated: "<danger>Tekrarlı PIN'ler (111111, 121212) yasak.</danger>"
+  sequential: "<danger>Ardışık PIN'ler (123456, 987654) yasak.</danger>"
+  common: "<danger>Bu PIN çok yaygın, başka bir tane seç.</danger>"
+  ip-limit: "<danger>Bu IP adresinden en fazla <max> hesap açılabilir.</danger>"
+  internal-error: "<danger>Bir hata oluştu, lütfen tekrar dene.</danger>"
+  changed: "<prefix> <success>PIN kodun güncellendi.</success>"
+
+menu:
+  title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Kilidi"
+  mode:
+    login:
+      name: "<glow><bold>Giriş Yap</bold></glow>"
+      lore:
+        - "<muted>Hesabına ait PIN kodunu gir.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Girilen:</muted> <glow><length></glow><muted>/<max></muted>"
+    register:
+      name: "<neon><bold>Kayıt Ol</bold></neon> <muted>• adım 1/2</muted>"
+      lore:
+        - "<muted>Kendine</muted> <glow><min>-<max></glow> <muted>haneli bir PIN belirle.</muted>"
+        - "<muted>Tekrarlı ve ardışık PIN'ler kabul edilmez.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Girilen:</muted> <glow><length></glow><muted>/<max></muted>"
+    register-confirm:
+      name: "<neon><bold>Kayıt Ol</bold></neon> <muted>• adım 2/2</muted>"
+      lore:
+        - "<muted>Aynı PIN'i tekrar gir.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Girilen:</muted> <glow><length></glow><muted>/<max></muted>"
+    change-current:
+      name: "<volt><bold>PIN Değiştir</bold></volt> <muted>• adım 1/3</muted>"
+      lore:
+        - "<muted>Önce mevcut PIN'ini gir.</muted>"
+    change-new:
+      name: "<volt><bold>PIN Değiştir</bold></volt> <muted>• adım 2/3</muted>"
+      lore:
+        - "<muted>Yeni</muted> <glow><min>-<max></glow> <muted>haneli PIN'ini gir.</muted>"
+    change-confirm:
+      name: "<volt><bold>PIN Değiştir</bold></volt> <muted>• adım 3/3</muted>"
+      lore:
+        - "<muted>Yeni PIN'i tekrar gir.</muted>"
+  busy:
+    name: "<volt><bold>Doğrulanıyor…</bold></volt>"
+    lore:
+      - "<muted>Argon2id hesaplanıyor, lütfen bekle.</muted>"
+  notice-lore:
+    - "<muted>Devam etmek için bir tuşa bas.</muted>"
+  digit: "<gradient:#a855f7:#22d3ee><bold><digit></bold></gradient>"
+  digit-lore:
+    - "<muted>Tıkla:</muted> <glow>rakam ekle</glow>"
+  filled: "<glow>●</glow>"
+  empty: "<dark_gray>○</dark_gray>"
+  delete: "<danger><bold>⌫ Sil</bold></danger>"
+  delete-lore:
+    - "<muted>Tık:</muted> <glow>son rakamı sil</glow>"
+    - "<muted>Shift + Tık:</muted> <glow>tümünü temizle</glow>"
+  confirm: "<success><bold>✔ Onayla</bold></success>"
+  confirm-lore:
+    - "<muted>Portalı açmak için tıkla.</muted>"
+  confirm-locked: "<#64748b><bold>✔ Onayla</bold>"
+  confirm-locked-lore:
+    - "<muted>En az</muted> <glow><min></glow> <muted>hane gir.</muted>"
+
+chat:
+  join: "<prefix> <success>▶</success> <glow><player></glow> <dark_gray>•</dark_gray> <muted>portala bağlandı</muted>"
+  quit: "<prefix> <danger>◀</danger> <glow><player></glow> <dark_gray>•</dark_gray> <muted>portaldan ayrıldı</muted>"
+
+kick:
+  # Bağlantı kesme ekranı istemci tarafından çizilir ve bu anda kaynak paketi yüklü olmayabilir;
+  # bu yüzden YALNIZCA varsayılan font kullanılır (özel glif yok). Satırlar sola hizalıdır.
+  header: |-
+    <gradient:${gradient}><bold>✦  <brand_spaced>  ✦</bold></gradient>
+    <dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>
+
+  footer: |-
+    <dark_gray>▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬</dark_gray>
+    <gradient:${gradient_secondary}>güvenli giriş</gradient> <dark_gray>•</dark_gray> <muted><brand></muted>
+
+  timeout: |-
+    <neon>✦</neon> <glow><bold>GİRİŞ SÜREN DOLDU</bold></glow>
+
+    <muted>Portal seni bekliyor.</muted>
+    <glow>Tekrar bağlanabilirsin.</glow>
+
+  locked: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>ERİŞİM GEÇİCİ OLARAK KİLİTLİ</bold></gradient>
+
+    <muted>Çok fazla hatalı deneme yapıldı.</muted>
+    <glow><minutes> dakika</glow> <muted>sonra tekrar dene.</muted>
+
+  not-ready: |-
+    <neon>◌</neon> <glow><bold>SUNUCU HAZIRLANIYOR</bold></glow>
+
+    <muted>Hesap servisi henüz açılmadı.</muted>
+    <glow>Birkaç saniye sonra tekrar dene.</glow>
+
+  database: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>HESAP SERVİSİNE ULAŞILAMADI</bold></gradient>
+
+    <muted>Veritabanı şu an yanıt vermiyor.</muted>
+    <glow>Lütfen biraz sonra tekrar dene.</glow>
+
+  name-taken: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>İSİM ZATEN KAYITLI</bold></gradient>
+
+    <muted>Bu isim</muted> <glow><registered></glow> <muted>olarak kayıtlı.</muted>
+    <glow>Lütfen tam olarak bu isimle bağlan.</glow>
+
+  already-online: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>BU İSİM ZATEN OYUNDA</bold></gradient>
+
+    <muted>Aynı isimle ikinci kez bağlanılamaz.</muted>
+    <glow>Mevcut oturumun kapanmasını bekle.</glow>
+
+  unregistered: |-
+    <neon>✦</neon> <glow><bold>HESABIN SIFIRLANDI</bold></glow>
+
+    <muted>Bir yetkili hesabını sildi.</muted>
+    <glow>Tekrar bağlanıp yeni bir PIN belirleyebilirsin.</glow>
+
+  internal: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>BEKLENMEYEN BİR HATA OLUŞTU</bold></gradient>
+
+    <muted>Sorun bizde, senin bir hatan yok.</muted>
+    <glow>Biraz sonra tekrar dene.</glow>
+
+command:
+  player-only: "<prefix> <danger>Bu komut yalnızca oyun içinde kullanılabilir.</danger>"
+  already-logged-in: "<prefix> <muted>Zaten giriş yaptın.</muted>"
+  must-login: "<prefix> <danger>Önce giriş yapmalısın.</danger>"
+  no-account: "<prefix> <danger>Kayıtlı bir hesabın yok.</danger>"
+  admin:
+    usage:
+      - "<prefix> <glow>Yönetim komutları</glow>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus info [oyuncu]</neon> <muted>— hesap bilgisi</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unregister [oyuncu]</neon> <muted>— hesabı sil (PIN sıfırlama)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus resetpass [oyuncu]</neon> <muted>— hesabı sıfırla (kilit dahil)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unlock [oyuncu]</neon> <muted>— kaba kuvvet kilidini aç (hesap silinmez)</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus unlockip [ip]</neon> <muted>— bir IP'nin kaba kuvvet cezasını temizle</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [oyuncu]</neon> <muted>— PIN sormadan giriş yaptır</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— yapılandırmayı ve dili yeniden yükle</muted>"
+    reloaded: "<prefix> <success>Yapılandırma ve mesajlar yeniden yüklendi.</success>"
+    reloaded-restart: "<prefix> <success>Yapılandırma yeniden yüklendi.</success> <muted>Veritabanı, hash, kaynak paketi ve denetim günlüğü değişiklikleri için sunucuyu yeniden başlatın.</muted>"
+    reload-failed: "<prefix> <danger>Yeniden yükleme başarısız: <error></danger>"
+    delete-failed: "<prefix> <danger><player> hesabı silinemedi. Konsolu kontrol edin.</danger>"
+    not-found: "<prefix> <danger><player> adında kayıtlı hesap yok.</danger>"
+    not-online: "<prefix> <danger><player> şu an oyunda değil.</danger>"
+    error: "<prefix> <danger>İşlem başarısız: <error></danger>"
+    info:
+      - "<prefix> <glow><player></glow> <muted>hesabı</muted>"
+      - "<dark_gray>•</dark_gray> <muted>UUID:</muted> <volt><uuid></volt>"
+      - "<dark_gray>•</dark_gray> <muted>Premium:</muted> <glow><premium></glow>  <muted>PIN:</muted> <glow><has_pin></glow>"
+      - "<dark_gray>•</dark_gray> <muted>Kayıt IP:</muted> <volt><reg_ip></volt>  <muted>Son IP:</muted> <volt><last_ip></volt>"
+    unregistered: "<prefix> <success><player> hesabı silindi.</success>"
+    resetpass: "<prefix> <success><player> hesabı sıfırlandı; PIN ve kilit cezası temizlendi.</success>"
+    unlocked: "<prefix> <success><player> için kaba kuvvet cezası temizlendi.</success>"
+    unlocked-ip: "<prefix> <success><ip> adresinin kaba kuvvet cezası temizlendi.</success>"
+    forcelogin: "<prefix> <success><player> için giriş yapıldı.</success>"
+
+# Yönetim yer tutucularında kullanılan kısa değerler (ör. /nexus info).
+common:
+  "yes": "evet"
+  "no": "hayır"
+  present: "var"
+  absent: "yok"
+  none: "yok"
+

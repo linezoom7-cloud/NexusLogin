@@ -1,0 +1,167 @@
+# ╔══════════════════════════════════════════╗
+# ║        NEXUS LOGIN — Configuration       ║
+# ╚══════════════════════════════════════════╝
+
+# Plugin language / Eklenti dili: "en" (English) or "tr" (Türkçe)
+# Available language files: messages_en.yml, messages_tr.yml
+language: en
+
+# ══════════════════════════════════════════════════════════════════════
+# GÖRSEL KİMLİK & ÖZELLEŞTİRME (BRANDING / WHITE-LABEL)
+# Sunucunuzun adı ve renk temasına göre menüleri, kaynak paketini ve
+# mesajları tek satırla özelleştirebilirsiniz! (Örn: Flame Login, CraftRise vb.)
+# ══════════════════════════════════════════════════════════════════════
+branding:
+  # Sunucunuzun veya sisteminizin adı (menü başlıklarında ve duyurularda kullanılır)
+  name: "Nexus Login"
+  # Kısa kod/kısaltma (örn: NEXUS, FLAME). Boş bırakılırsa name'den otomatik türetilir.
+  short-name: "NEXUS"
+
+  # ✦ BAŞLANGIÇ DOSTU HAZIR TEMALAR (PRESETS) ✦
+  # Hex kodlarıyla tek tek uğraşmak istemiyorsanız aşağıdaki hazır temalardan birini seçebilirsiniz:
+  #   - NEXUS         -> Orijinal Siber Mor & Cyan teması
+  #   - FLAME         -> Alev Kırmızısı & Turuncu (PvP / Faction sunucuları için)
+  #   - EMERALD       -> Zümrüt Yeşili & Mint (Hayatta Kalma / Doğa temalı sunucular)
+  #   - CYBER_CYAN    -> Elektrik Mavisi & Buz Cyan (Modern / Skyblock sunucuları)
+  #   - GOLDEN        -> Asil Altın & Kehribar (Ortaçağ / RPG sunucuları)
+  #   - ROYAL_PURPLE  -> Derin Kraliyet Moru & Pembe
+  #   - MIDNIGHT      -> Gece Laciverti & İndigo
+  #   - CUSTOM        -> Kendi hex kodlarınızı belirlemek için
+  theme: "NEXUS"
+
+  # Özel renkler (theme: "CUSTOM" yaptığınızda veya hazır temanın bir rengini değiştirmek istediğinizde):
+  # colors: bloğu YAZILMADIKÇA theme preset'in renkleri kullanılır.
+  # Yalnızca belirli renkleri override etmek istiyorsanız aşağıdaki satırların başındaki # işaretini kaldırın:
+  # colors:
+  #   primary: "#A855F7"
+  #   secondary: "#3B82F6"
+  #   accent: "#22D3EE"
+  #   success: "#4ADE80"
+  #   danger: "#F472B6"
+  #   muted: "#94A3B8"
+
+database:
+  # SQLITE  -> tek dosya, kurulum gerektirmez (küçük/orta sunucular)
+  # MARIADB -> ayrı veritabanı sunucusu (yüksek yük, yedekleme kolaylığı)
+  type: SQLITE
+
+  sqlite:
+    file: nexus.db
+
+  mariadb:
+    host: localhost
+    port: 3306
+    database: nexus
+    username: nexus
+    password: "degistir-beni"
+
+  # HikariCP havuz ayarları. SQLite'ta havuz boyutu yazma kilidi çakışmalarını
+  # önlemek için kod tarafında her zaman 1'e sabitlenir.
+  pool:
+    maximum-pool-size: 10
+    minimum-idle: 2
+    connection-timeout-ms: 5000
+    max-lifetime-ms: 1800000
+
+auth:
+  # Oyuncunun giriş yapmak için sahip olduğu süre. Dolunca sunucudan atılır.
+  timeout-seconds: 120
+  # NOT: max-attempts / lockout-minutes eski anahtarlardır. Aşağıdaki "throttle"
+  # bölümü varsa yok sayılır; bölüm silinirse geriye dönük uyumluluk için kullanılır.
+  # max-attempts: 5
+  # lockout-minutes: 5
+  # Aynı IP'den açılabilecek en fazla hesap (0 = sınırsız).
+  max-accounts-per-ip: 3
+  # Giriş yapmış oyuncu, aynı IP'den bu süre içinde dönerse PIN sorulmaz (0 = kapalı).
+  session-remember-minutes: 10
+  # Giriş yapana kadar oyuncuyu güvenli dünya spawn noktasına ışınla.
+  teleport-to-spawn: false
+  # Başarılı giriş sonrası oyuncuyu oyundan çıktığı eski konumuna geri döndür.
+  restore-previous-location: true
+  # Giriş yapana kadar envanterdeki eşyaları geçici olarak gizle.
+  hide-inventory: true
+  pin:
+    # 6 hane yalnızca 1.000.000 olasılıktır; veritabanı sızarsa saatler içinde kırılır.
+    # 8 hane = 100.000.000 olasılık. Üst sınır 9 (gösterge satırı).
+    min-length: 8
+    max-length: 9
+  # Kalıcı, artan cezalı kaba kuvvet koruması. Sayaçlar veritabanında tutulur:
+  # yeniden bağlanmak veya sunucuyu yeniden başlatmak sayacı SIFIRLAMAZ.
+  throttle:
+    # Hatalı denemelerin sayıldığı pencere. Pencere dolunca sayaç sıfırlanır.
+    window-minutes: 15
+    # Aynı HESAP için pencere başına izin verilen hatalı deneme (zorunlu, >= 1).
+    # Eşik aşılınca hesap kilitlenir; her yeni kilitte süre ikiye katlanır.
+    account-threshold: 5
+    # Aynı IP için pencere başına hatalı deneme. 0 = KAPALI (varsayılan).
+    # MCSH gibi aktarıcı/proxy arkalarında tüm oyuncular aynı IP'de görünür; burada
+    # açmak masum oyuncuları kilitler ve tek bir saldırganla tüm sunucuyu kilitleyebilir.
+    # Gerçek istemci IP'si (IP forwarding / PROXY protocol) varsa 20-30 deneyin.
+    ip-threshold: 0
+    # İlk kilidin süresi; her yeni kilitte ikiye katlanır.
+    base-lockout-minutes: 1
+    # Üstel cezanın tavanı (1440 = 24 saat).
+    max-lockout-minutes: 1440
+  # Giriş yapmamış oyuncunun kullanabileceği komutlar.
+  allowed-commands:
+    - giris
+    - login
+    - l
+  # Premium otomatik giriş YALNIZCA server.properties'te online-mode=true iken çalışır.
+  # Offline-mode sunucuda isimle premium tespiti güvensizdir (herkes "Notch" ismini yazabilir),
+  # bu yüzden orada bu özellik bilerek devre dışıdır.
+  premium-auto-login: true
+
+resource-pack:
+  # Eklenti, neon PIN menüsünün arka planını içeren küçük bir kaynak paketini kendisi üretir
+  # ve oyunculara kendisi ulaştırır. ItemsAdder/Oraxen gerekmez.
+  # Oyuncu paketi reddederse menü yine çalışır (cam panelli yedek tasarım).
+  enabled: true
+
+  # Paketin dağıtım yöntemi:
+  #   same-port -> Minecraft'ın KENDİ portu üzerinden HTTP ile sunulur. Ek port gerekmez.
+  #                NOT: MCServerHost gibi "Minecraft aktarıcı" kullanan panellerde çalışmaz
+  #                (aktarıcı 25565'te HTTP isteklerini düşürür) — orada url kullanın.
+  #   port      -> Ayrı bir TCP portunda gömülü HTTP sunucusu. O portun panelden
+  #                dışarıya açık olması gerekir.
+  #   url       -> Paket başka bir adreste barındırılıyorsa (panel > Kaynak Paketleri,
+  #                kendi web sunucunuz veya CDN).
+  delivery: same-port
+
+  # Yalnızca delivery: port için. Dışarıya açık olması gereken TCP portu.
+  port: 8164
+
+  # Boş bırakılırsa oyuncunun bağlanırken yazdığı adres kullanılır.
+  # Gerekirse ör. "oyna.sunucum.com" veya "oyna.sunucum.com:25565".
+  public-host: ""
+
+  # Yalnızca delivery: url için. Paketin tam adresi (ör. https://cdn.sunucum.com/nexus.zip).
+  # Üretilen ZIP sunucuda plugins/NexusLogin/pack/nexus-pack.zip olarak da yazılır;
+  # bu dosyayı panele/CDN'e yükleyip adresini buraya yazın.
+  public-url: ""
+
+  # true: paketi reddeden oyuncunun bağlantısı istemci tarafından kesilir.
+  required: false
+
+security:
+  # Denetim günlüğü (plugins/NexusLogin/nexus-auth.log) sınırsız büyümesin.
+  # Bir kaba kuvvet saldırısı saniyede yüzlerce satır üretebilir; döndürme olmadan
+  # disk dolabilir.
+  audit:
+    # Tek dosyanın üst sınırı (KiB). Aşıldığında nexus-auth.log.1, .2 ... oluşturulur.
+    # 0 yazarsanız döndürme tamamen kapanır (önerilmez).
+    max-size-kb: 1024
+    # Döndürme sonrası saklanacak eski dosya sayısı (1-100).
+    keep-files: 5
+  argon2:
+    # Hash başına kullanılacak RAM (KiB). 65536 = 64 MiB. OWASP alt sınırı 19456 (19 MiB).
+    memory-kib: 65536
+    # Zaman maliyeti (geçiş sayısı).
+    iterations: 3
+    # Hash başına paralel şerit sayısı.
+    parallelism: 1
+    salt-length: 16
+    hash-length: 32
+    # Aynı anda en fazla kaç Argon2 hesaplaması yapılır.
+    # Bellek tavanı = max-concurrent x memory-kib  (varsayılan: 2 x 64 MiB = 128 MiB)
+    max-concurrent: 2

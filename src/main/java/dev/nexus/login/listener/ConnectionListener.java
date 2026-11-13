@@ -1,0 +1,152 @@
+package dev.nexus.login.listener;
+
+import dev.nexus.login.account.Account;
+import dev.nexus.login.account.AccountRepository;
+import dev.nexus.login.auth.AuthAudit;
+import dev.nexus.login.auth.AuthService;
+import dev.nexus.login.auth.LoginThrottle;
+import dev.nexus.login.auth.SessionManager;
+import dev.nexus.login.ui.Messages;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.Bukkit;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+
+import java.net.InetAddress;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+public final class ConnectionListener implements Listener {
+
+    private static final long DB_TIMEOUT_SECONDS = 10;
+
+    private final Supplier<CompletableFuture<Void>> ready;
+    private final AccountRepository accounts;
+    private final SessionManager sessions;
+    private final LoginThrottle throttle;
+    private final AuthService auth;
+    private final AuthAudit audit;
+    private final Messages messages;
+    private final Logger logger;
+
+    public ConnectionListener(Supplier<CompletableFuture<Void>> ready, AccountRepository accounts,
+                              SessionManager sessions, LoginThrottle throttle, AuthService auth,
+                              Messages messages, AuthAudit audit, Logger logger) {
+        this.ready = ready;
+        this.accounts = accounts;
+        this.sessions = sessions;
+        this.throttle = throttle;
+        this.auth = auth;
+        this.messages = messages;
+        this.audit = audit;
+        this.logger = logger;
+    }
+
+    /**
+     * Paper bu eventi kendi asenkron thread'inde çalıştırır; burada bloklamak (get) ana
+     * thread'i ETKİLEMEZ. Hesap burada önceden yüklenir, join anında DB beklenmez.
+     */
+    @EventHandler(priority = EventPriority.LOW)
+    public void onPreLogin(AsyncPlayerPreLoginEvent event) {
+        if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
+            return;
+        }
+        String name = event.getName();
+        InetAddress address = event.getAddress();
+        String ip = address == null ? "unknown" : address.getHostAddress();
+
+        try {
+            ready.get().get(15, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            disallow(event, "kick.not-ready");
+            return;
+        }
+
+        // Kalıcı sayaç: hesap (her zaman) + IP (yapılandırıldıysa). Yeniden bağlanmak
+        // veya sunucuyu yeniden başlatmak bu sayacı sıfırlamaz.
+        Optional<LoginThrottle.Verdict> lock = throttle.check(ip, event.getUniqueId());
+        if (lock.isPresent()) {
+            long minutes = lock.get().minutes();
+            audit.preLoginDenied(name, event.getUniqueId(), ip, "locked");
+            disallow(event, "kick.locked", Placeholder.unparsed("minutes", String.valueOf(minutes)));
+            return;
+        }
+
+        // Offline-mode'da aynı isimle bağlanan, oyundaki asıl oyuncuyu sunucudan attırır.
+        // Bunu engellemek için yeni bağlantı reddedilir, oyundaki oyuncu korunur.
+        // (Online-mode'da Mojang kimliği doğruladığı için bu gerekmez; orada vanilla davranışı korunur.)
+        if (!Bukkit.getOnlineMode() && Bukkit.getPlayerExact(name) != null) {
+            audit.preLoginDenied(name, event.getUniqueId(), ip, "already-online");
+            disallow(event, "kick.already-online");
+            return;
+        }
+
+        try {
+            Optional<Account> byUuid = accounts.findByUuid(event.getUniqueId()).get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (byUuid.isEmpty()) {
+                // "Notch" kayıtlıyken "notch" ile gelen, farklı bir offline UUID alır: kimliğe bürünme girişimi.
+                Optional<Account> byName = accounts.findByName(name).get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (byName.isPresent()) {
+                    audit.preLoginDenied(name, event.getUniqueId(), ip, "name-taken");
+                    disallow(event, "kick.name-taken", Placeholder.unparsed("registered", byName.get().playerName()));
+                    return;
+                }
+            }
+            sessions.preload(event.getUniqueId(), byUuid.orElse(null));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            audit.preLoginDenied(name, event.getUniqueId(), ip, "database");
+            disallow(event, "kick.database");
+        } catch (ExecutionException | TimeoutException e) {
+            logger.log(Level.SEVERE, "Pre-login hesap sorgusu başarısız: " + name, e);
+            audit.preLoginDenied(name, event.getUniqueId(), ip, "database");
+            disallow(event, "kick.database");
+        }
+    }
+
+    private void disallow(AsyncPlayerPreLoginEvent event, String key, TagResolver... placeholders) {
+        event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
+                messages.kick(key, placeholders));
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onJoin(PlayerJoinEvent event) {
+        auth.begin(event.getPlayer());
+    }
+
+    /** Vanilla "joined the game" yerine Nexus temalı duyuru. */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void brandJoin(PlayerJoinEvent event) {
+        event.joinMessage(messages.get("chat.join",
+                Placeholder.unparsed("player", event.getPlayer().getName())));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        auth.onQuit(event.getPlayer());
+    }
+
+    /** Vanilla "left the game" yerine Nexus temalı duyuru. */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void brandQuit(PlayerQuitEvent event) {
+        event.quitMessage(messages.get("chat.quit",
+                Placeholder.unparsed("player", event.getPlayer().getName())));
+    }
+
+    @EventHandler
+    public void onPackStatus(PlayerResourcePackStatusEvent event) {
+        auth.onPackStatus(event.getPlayer(), event.getID(), event.getStatus());
+    }
+}
