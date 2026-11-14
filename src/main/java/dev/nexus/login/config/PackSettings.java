@@ -25,7 +25,9 @@ public record PackSettings(boolean enabled, PackDelivery delivery, int port, Str
         // artık değer yüzünden eklentinin açılmaması yanlış olur: kullanıcı paketi
         // bilerek kapatmıştır. Yine de normalizasyon (trim) her zaman yapılır.
         if (enabled) {
-            if (port < 1 || port > 65_535) {
+            // Port yalnızca ayrı HTTP sunucusu kipinde kullanılır. same-port/url seçiliyken
+            // eski veya anlamsız bir port değeri eklentiyi açılmaz hale getirmemeli.
+            if (delivery == PackDelivery.PORT && (port < 1 || port > 65_535)) {
                 throw new IllegalArgumentException("resource-pack.port 1-65535 aralığında olmalı");
             }
             if (delivery == PackDelivery.URL) {

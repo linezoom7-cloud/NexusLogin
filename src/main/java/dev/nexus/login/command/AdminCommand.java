@@ -17,6 +17,8 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -131,10 +133,19 @@ public final class AdminCommand implements TabExecutor {
                         Placeholder.unparsed("player", account.playerName())));
             });
             case "unlockip" -> {
-                auth.clearIpThrottle(target);
-                audit.admin(sender.getName(), "unlockip", target);
+                // Yalnızca gerçek bir IPv4/IPv6 adresi kabul edilir. InetAddress.getByName
+                // hostname de çözebildiği için önce biçim kontrolü yapılır; aksi halde
+                // "localhost" yazan admin sessizce 127.0.0.1 cezasını temizleyebilirdi.
+                String ip = normalizeIpLiteral(target);
+                if (ip == null) {
+                    sender.sendMessage(messages.get("command.admin.invalid-ip",
+                            Placeholder.unparsed("ip", target)));
+                    return true;
+                }
+                auth.clearIpThrottle(ip);
+                audit.admin(sender.getName(), "unlockip", ip);
                 sender.sendMessage(messages.get("command.admin.unlocked-ip",
-                        Placeholder.unparsed("ip", target)));
+                        Placeholder.unparsed("ip", ip)));
             }
             case "forcelogin" -> {
                 Player online = Bukkit.getPlayerExact(target);
@@ -182,6 +193,52 @@ public final class AdminCommand implements TabExecutor {
 
     private String ipOrNone(@Nullable String ip) {
         return ip == null || ip.isBlank() ? messages.text("common.none", "-") : ip;
+    }
+
+    /**
+     * Verilen metni IPv4/IPv6 literal olarak doğrular ve kanonik biçimine çevirir.
+     * DNS çözümlemesi yapılmaz: yalnızca rakam/nokta (IPv4) veya hex/iki nokta (IPv6)
+     * karakterlerinden oluşan girdiler kabul edilir.
+     *
+     * @return kanonik adres, geçersizse {@code null}
+     */
+    static @Nullable String normalizeIpLiteral(String raw) {
+        String candidate = raw == null ? "" : raw.trim();
+        if (candidate.isEmpty() || candidate.length() > 45) {
+            return null;
+        }
+        if (candidate.indexOf(':') >= 0) {
+            // İki nokta içeren girdi hostname olamaz; InetAddress burada DNS'e gitmez.
+            if (!candidate.matches("[0-9a-fA-F:.]+")) {
+                return null;
+            }
+            try {
+                return InetAddress.getByName(candidate).getHostAddress();
+            } catch (UnknownHostException e) {
+                return null;
+            }
+        }
+        // IPv4'ü kendimiz ayrıştırırız: "999.999.999.999" gibi geçersiz bir değer
+        // InetAddress tarafından hostname sanılıp DNS sorgusuna dönüşebilirdi.
+        String[] parts = candidate.split("\\.", -1);
+        if (parts.length != 4) {
+            return null;
+        }
+        StringBuilder normalized = new StringBuilder(candidate.length());
+        for (String part : parts) {
+            if (!part.matches("\\d{1,3}") || (part.length() > 1 && part.charAt(0) == '0')) {
+                return null;
+            }
+            int octet = Integer.parseInt(part);
+            if (octet > 255) {
+                return null;
+            }
+            if (!normalized.isEmpty()) {
+                normalized.append('.');
+            }
+            normalized.append(octet);
+        }
+        return normalized.toString();
     }
 
     private static String errorMessage(Throwable error) {

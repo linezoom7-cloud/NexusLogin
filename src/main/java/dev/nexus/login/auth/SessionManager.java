@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,6 +31,11 @@ public final class SessionManager {
     private final Map<UUID, AuthSession> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Preloaded> preloaded = new ConcurrentHashMap<>();
     private final Map<UUID, Remembered> remembered = new ConcurrentHashMap<>();
+    /**
+     * Hesabı silinen oyuncunun çıkışında {@link #remember} çağrılsa bile kayıt oluşmasın.
+     * Kick ile quit event'i arasındaki sıra garanti olmadığı için bu bayrak gerekir.
+     */
+    private final Set<UUID> rememberBlocked = ConcurrentHashMap.newKeySet();
 
     AuthSession create(UUID uuid, String ip, Duration timeout) {
         AuthSession session = new AuthSession(uuid, ip, timeout);
@@ -78,9 +84,14 @@ public final class SessionManager {
     // ── beni hatırla ──
 
     void remember(UUID uuid, String ip, Duration duration) {
-        if (!duration.isZero()) {
+        if (!duration.isZero() && !rememberBlocked.contains(uuid)) {
             remembered.put(uuid, new Remembered(ip, Instant.now().plus(duration)));
         }
+    }
+
+    /** Başarılı bir giriş/kayıt sonrası "beni hatırla" yeniden etkinleşir. */
+    void allowRemember(UUID uuid) {
+        rememberBlocked.remove(uuid);
     }
 
     /** Tek kullanımlık: eşleşse de eşleşmese de kayıt silinir. */
@@ -89,7 +100,22 @@ public final class SessionManager {
         return r != null && r.ip().equals(ip) && Instant.now().isBefore(r.expiresAt());
     }
 
-    public void forget(UUID uuid) {
+    /**
+     * PIN değişince eski "beni hatırla" kaydı geçersiz olmalı: aksi halde PIN'i değiştiren
+     * oyuncu, aynı IP'den gelen eski oturum kaydıyla hâlâ PIN'siz girebilirdi.
+     */
+    public void invalidateRemembered(UUID uuid) {
         remembered.remove(uuid);
+    }
+
+    /**
+     * Hesap silindiğinde/unregister edildiğinde çağrılır. Ön-yüklenmiş hesap da temizlenir;
+     * aksi halde pre-login ile join arasındaki oyuncu silinmiş hesabın eski hash'iyle bir kez
+     * giriş yapabilirdi.
+     */
+    public void forget(UUID uuid) {
+        rememberBlocked.add(uuid);
+        remembered.remove(uuid);
+        preloaded.remove(uuid);
     }
 }

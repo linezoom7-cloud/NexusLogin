@@ -4,7 +4,9 @@ import dev.nexus.login.auth.SessionManager;
 import dev.nexus.login.menu.PinMenu;
 import dev.nexus.login.ui.Messages;
 import io.papermc.paper.event.player.AsyncChatEvent;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -14,17 +16,24 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerCommandSendEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.event.player.PlayerHarvestBlockEvent;
+import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerShearEntityEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.vehicle.VehicleEnterEvent;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -100,7 +109,16 @@ public final class RestrictionListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onDamageOthers(EntityDamageByEntityEvent event) {
-        if (restricted(event.getDamager())) {
+        Entity damager = event.getDamager();
+        // Ok/kar topu/trident gibi mermilerde damager PROJECTILE'dır; asıl sahibi
+        // getShooter()'dadır. Kontrol edilmezse kısıtlı oyuncu dolaylı hasar verebilirdi.
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Player shooter) {
+            if (restricted(shooter)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+        if (restricted(damager)) {
             event.setCancelled(true);
         }
     }
@@ -142,6 +160,50 @@ public final class RestrictionListener implements Listener {
         }
     }
 
+    /**
+     * Ok/yay ile dünyadaki mekanizmalar (ahşap buton, hedef bloğu, sculk sensörü) yay
+     * üzerinden tetiklenebilir. Hasar zaten engelleniyor; ama buton tetiklemek de kapıyı
+     * açar, bu yüzden atışın kendisi de iptal edilir.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onShootBow(EntityShootBowEvent event) {
+        if (restricted(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Balık tutma, envantere doğrudan eşya ekleyebildiği için ayrıca kapatılır. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onFish(PlayerFishEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Koyun kırpma gibi doğrudan envanter kazancı sağlayan etkileşimler. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onShear(PlayerShearEntityEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Tatlı orman meyvesi gibi sağ tık hasadı her sürümde PlayerInteractEvent üretmez. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onHarvest(PlayerHarvestBlockEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Sağ tıkla binme her zaman PlayerInteractEntityEvent üretmese de araç girişi kapatılır. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onVehicleEnter(VehicleEnterEvent event) {
+        if (restricted(event.getEntered())) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
         // PIN menüsündeki tıklamalar MenuListener'a aittir.
@@ -169,6 +231,24 @@ public final class RestrictionListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInteractEntity(PlayerInteractEntityEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Armor stand'lerde eşya alma/takma {@link PlayerArmorStandManipulateEvent} ile, bazı
+     * etkileşimler ise {@link PlayerInteractAtEntityEvent} ile gelir; ikisi de ayrıca kapatılır.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onInteractAtEntity(PlayerInteractAtEntityEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onArmorStandManipulate(PlayerArmorStandManipulateEvent event) {
         if (restricted(event.getPlayer())) {
             event.setCancelled(true);
         }

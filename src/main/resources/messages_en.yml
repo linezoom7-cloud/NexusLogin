@@ -139,6 +139,12 @@ kick:
     <muted>The database is not responding right now.</muted>
     <glow>Please try again shortly.</glow>
 
+  inventory: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>INVENTORY BACKUP UNREADABLE</bold></gradient>
+
+    <muted>Your saved inventory could not be restored.</muted>
+    <glow>Please contact a server administrator.</glow>
+
   name-taken: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>NAME ALREADY REGISTERED</bold></gradient>
 
@@ -179,8 +185,9 @@ command:
       - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [player]</neon> <muted>— bypass PIN check and authenticate</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— reload configuration and language</muted>"
     reloaded: "<prefix> <success>Configuration and messages reloaded.</success>"
-    reloaded-restart: "<prefix> <success>Configuration reloaded.</success> <muted>Database, hashing, resource-pack and audit changes require a full server restart.</muted>"
+    reloaded-restart: "<prefix> <success>Configuration reloaded.</success> <muted>Database, hashing, resource-pack, branding (pack visuals) and audit changes require a full server restart.</muted>"
     reload-failed: "<prefix> <danger>Reload failed: <error></danger>"
+    invalid-ip: "<prefix> <danger><ip> is not a valid IPv4/IPv6 address.</danger>"
     delete-failed: "<prefix> <danger>Account for <player> could not be deleted. Check the console.</danger>"
     not-found: "<prefix> <danger>No registered account found for <player>.</danger>"
     not-online: "<prefix> <danger><player> is not currently online.</danger>"

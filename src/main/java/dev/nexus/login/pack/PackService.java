@@ -392,6 +392,13 @@ public final class PackService implements AutoCloseable {
         if (isWildcard(host)) {
             return null;
         }
+        // Host, oyuncunun handshake'inde gönderdiği DEĞİŞKEN bir değerdir. Doğrulanmadan
+        // URL'e ve log'a girmesi, bozuk/control karakterli adresler üretilmesine yol açardı.
+        if (!isSafeHost(host)) {
+            String rejected = host;
+            logger.fine(() -> "Kaynak paketi adresi için geçersiz host reddedildi: '" + rejected + "'");
+            return null;
+        }
         if (port == 0) {
             port = parsed.port();
         }
@@ -414,6 +421,37 @@ public final class PackService implements AutoCloseable {
 
     private static boolean isWildcard(String host) {
         return "0.0.0.0".equals(host) || "::".equals(host) || "0:0:0:0:0:0:0:0".equals(host);
+    }
+
+    /**
+     * URL'e gömülecek host'u doğrular: yalnızca IPv4/IPv6 literal veya DNS adı karakterleri.
+     * Boşluk, {@code / \ @ ? # % < > " '} ve kontrol karakterleri reddedilir; böylece
+     * handshake'ten gelen veri adresin yapısını değiştiremez.
+     */
+    static boolean isSafeHost(String host) {
+        if (host == null) {
+            return false;
+        }
+        String candidate = host.trim();
+        if (candidate.isEmpty() || candidate.length() > 253 || !candidate.equals(host)) {
+            return false;
+        }
+        if (candidate.indexOf(':') >= 0) {
+            // IPv6 literal: yalnızca hex, iki nokta ve gömülü IPv4 noktalarına izin ver.
+            return candidate.matches("[0-9A-Fa-f:.]{2,45}")
+                    && candidate.chars().filter(c -> c == ':').count() >= 2
+                    && !candidate.contains(":::");
+        }
+        if (!candidate.matches("[A-Za-z0-9.-]+")) {
+            return false;
+        }
+        for (String label : candidate.split("\\.", -1)) {
+            if (label.isEmpty() || label.length() > 63
+                    || label.charAt(0) == '-' || label.charAt(label.length() - 1) == '-') {
+                return false;
+            }
+        }
+        return true;
     }
 
     record HostAndPort(String host, int port) {

@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MessageFilesTest {
 
     private static final List<String> KICK_REASONS = List.of(
-            "timeout", "locked", "not-ready", "database",
+            "timeout", "locked", "not-ready", "database", "inventory",
             "name-taken", "already-online", "unregistered", "internal");
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -89,7 +89,7 @@ class MessageFilesTest {
     void adminUnlockMessagesExist(String file) {
         YamlConfiguration yaml = load(file);
         for (String key : List.of("command.admin.unlocked", "command.admin.unlocked-ip",
-                "command.admin.resetpass")) {
+                "command.admin.resetpass", "command.admin.invalid-ip")) {
             String raw = yaml.getString(key);
             assertNotNull(raw, file + " → " + key);
             assertFalse(raw.isBlank(), file + " → " + key + " boş");

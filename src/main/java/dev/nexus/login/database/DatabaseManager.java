@@ -4,11 +4,15 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import dev.nexus.login.config.DatabaseSettings;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
@@ -70,7 +74,7 @@ public final class DatabaseManager implements AutoCloseable {
 
         switch (settings.type()) {
             case SQLITE -> {
-                Path file = dataFolder.resolve(settings.sqliteFile()).toAbsolutePath();
+                Path file = sqliteFile();
                 config.setJdbcUrl("jdbc:sqlite:" + file);
                 // SQLite tek yazıcıya izin verir. Birden fazla bağlantı = SQLITE_BUSY hataları.
                 // Tek bağlantı + Hikari kuyruğu, eşzamanlı istekleri güvenle sıraya koyar.
@@ -89,6 +93,10 @@ public final class DatabaseManager implements AutoCloseable {
                 config.setPassword(settings.password());
                 config.setMaximumPoolSize(settings.maximumPoolSize());
                 config.setMinimumIdle(settings.minimumIdle());
+                // TLS: sslMode=verify-full uzak sunucularda MITM'e karşı önerilir. Varsayılan
+                // "disable" geriye dönük uyumluluk içindir; aşağıda uyarı verilir.
+                config.addDataSourceProperty("sslMode", settings.sslMode());
+                warnIfDatabaseTrafficUnencrypted();
                 // MariaDB Connector/J 3.x her zaman utf8mb4 konuşur; ek encoding ayarı gerekmez.
                 config.addDataSourceProperty("cachePrepStmts", "true");
                 config.addDataSourceProperty("prepStmtCacheSize", "250");
@@ -96,6 +104,40 @@ public final class DatabaseManager implements AutoCloseable {
             }
         }
         return config;
+    }
+
+    /**
+     * SQLite dosyasını eklenti klasörünün İÇİNDE tutar. {@code ../} içeren bir yol, yanlış
+     * yapılandırma veya kötü niyetli bir panel kullanıcısı tarafından eklenti klasörü dışına
+     * yazmak için kullanılabilirdi.
+     */
+    private Path sqliteFile() {
+        Path root = dataFolder.toAbsolutePath().normalize();
+        Path file = root.resolve(settings.sqliteFile()).normalize();
+        if (!file.startsWith(root)) {
+            throw new IllegalArgumentException(
+                    "database.sqlite.file eklenti klasörünün dışına çıkamaz: " + settings.sqliteFile());
+        }
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException e) {
+            throw new DataAccessException("SQLite klasörü oluşturulamadı: " + file.getParent(), e);
+        }
+        return file;
+    }
+
+    /** Uzak MariaDB'ye şifresiz bağlanılıyorsa yöneticiyi açıkça uyarır. */
+    private void warnIfDatabaseTrafficUnencrypted() {
+        if (settings.sslMode().equals("disable") && !isLoopback(settings.host())) {
+            logger.warning("database.mariadb.ssl-mode=disable: veritabanı trafiği (kimlik bilgileri ve "
+                    + "PIN hash'leri) ağda şifresiz gidiyor. Uzak sunucularda ssl-mode: verify-full kullanın.");
+        }
+    }
+
+    private static boolean isLoopback(String host) {
+        String value = host == null ? "" : host.trim().toLowerCase(Locale.ROOT);
+        return value.equals("localhost") || value.equals("127.0.0.1") || value.equals("::1")
+                || value.equals("0:0:0:0:0:0:0:1");
     }
 
     private void migrate(HikariDataSource ds) throws SQLException {
@@ -123,12 +165,79 @@ public final class DatabaseManager implements AutoCloseable {
 
     /**
      * Sürümler arası veri dönüşümleri. Temel tablolar {@link Schema#statements} ile her
-     * açılışta oluşturulduğu için v0 → v1 geçişi ek işlem gerektirmez; gelecekteki
-     * değişiklikler buraya sırayla eklenir.
+     * açılışta oluşturulduğu için v0 → v1 geçişi ek işlem gerektirmez; sonraki adımlar
+     * buraya sırayla eklenir.
      */
     private void applyMigrations(Connection connection, int fromVersion) throws SQLException {
-        // Örnek gelecek adımı:
-        // if (fromVersion < 2) { ... ALTER TABLE ... }
+        if (fromVersion < 2) {
+            // v2: aynı isimle (büyük/küçük harf farkı dahil) birden fazla hesap olamaz.
+            // Önce yinelenenleri temizle, SONRA unique indeksi oluştur; tersi sıra mevcut
+            // veritabanlarında migration'ı kalıcı olarak kilitleyebilirdi.
+            dedupeAccountNames(connection);
+            createUniqueNameIndex(connection);
+        }
+    }
+
+    /**
+     * Aynı oyuncu adına sahip satırlardan yalnızca en eskisini (en küçük id) bırakır.
+     * Silinen satırların yerine yeni hesap açılabilir; bu, şema tekilliğini bozan
+     * bozuk veriyi onarmak için bilinçli bir veri kaybıdır.
+     */
+    private void dedupeAccountNames(Connection connection) throws SQLException {
+        String sql = switch (settings.type()) {
+            case SQLITE -> """
+                    DELETE FROM nexus_accounts
+                    WHERE id NOT IN (
+                        SELECT MIN(id) FROM nexus_accounts GROUP BY player_name COLLATE NOCASE
+                    )
+                    """;
+            case MARIADB -> """
+                    DELETE older FROM nexus_accounts older
+                    JOIN nexus_accounts newer
+                      ON older.player_name = newer.player_name AND older.id > newer.id
+                    """;
+        };
+        try (Statement statement = connection.createStatement()) {
+            int removed = statement.executeUpdate(sql);
+            if (removed > 0) {
+                logger.warning(() -> "Şema v2: isim çakışması olan " + removed
+                        + " yinelenen hesap satırı silindi.");
+            }
+        }
+    }
+
+    private void createUniqueNameIndex(Connection connection) throws SQLException {
+        switch (settings.type()) {
+            case SQLITE -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("""
+                            CREATE UNIQUE INDEX IF NOT EXISTS ux_nexus_accounts_name
+                            ON nexus_accounts (player_name COLLATE NOCASE)
+                            """);
+                }
+            }
+            case MARIADB -> {
+                // MariaDB "CREATE UNIQUE INDEX IF NOT EXISTS" desteklemez; önce varlığı sorulur.
+                if (!indexExists(connection, "nexus_accounts", "uk_nexus_accounts_name")) {
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute("ALTER TABLE nexus_accounts "
+                                + "ADD UNIQUE KEY uk_nexus_accounts_name (player_name)");
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean indexExists(Connection connection, String table, String index) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM information_schema.statistics "
+                + "WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, table);
+            statement.setString(2, index);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
     }
 
     private int readVersion(Connection connection) throws SQLException {

@@ -15,6 +15,8 @@ class Argon2idHasherTest {
     // Testlerin hızlı olması için OWASP alt sınırındaki parametreler.
     private static final HashingSettings WEAK = new HashingSettings(19_456, 2, 1, 16, 32, 2);
     private static final HashingSettings STRONG = new HashingSettings(19_456, 3, 1, 16, 32, 2);
+    private static final HashingSettings PEPPERED =
+            new HashingSettings(19_456, 2, 1, 16, 32, 2, "unit-test-pepper-1234567890");
 
     private static ExecutorService executor;
 
@@ -65,6 +67,33 @@ class Argon2idHasherTest {
                 hasher.verify("5f4dcc3b5aa765d61d8327deb882cf99", "password".toCharArray()).join());
         assertInstanceOf(VerificationResult.Mismatch.class,
                 hasher.verify(null, "password".toCharArray()).join());
+    }
+
+    @Test
+    void pepperIsRequiredToVerifyHash() {
+        String hash = new Argon2idHasher(PEPPERED, executor).hash("Nexus123!".toCharArray()).join();
+
+        assertInstanceOf(VerificationResult.Match.class, new Argon2idHasher(PEPPERED, executor)
+                .verify(hash, "Nexus123!".toCharArray()).join());
+        // Pepper'sız bir hasher aynı PIN'i doğrulayamaz: pepper gerçekten hesaba katılıyor.
+        assertInstanceOf(VerificationResult.Mismatch.class, new Argon2idHasher(WEAK, executor)
+                .verify(hash, "Nexus123!".toCharArray()).join());
+    }
+
+    @Test
+    void rejectsAbsurdPhcParametersBeforeArgon2Runs() {
+        var hasher = new Argon2idHasher(WEAK, executor);
+        String bomb = "$argon2id$v=19$m=999999999,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$"
+                + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+        assertInstanceOf(VerificationResult.Mismatch.class,
+                hasher.verify(bomb, "Nexus123!".toCharArray()).join());
+    }
+
+    @Test
+    void rejectsTooShortPepper() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new HashingSettings(19_456, 2, 1, 16, 32, 2, "kisa"));
     }
 
     @Test

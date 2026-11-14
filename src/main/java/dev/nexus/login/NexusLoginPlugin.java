@@ -44,6 +44,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
     private SqlLoginAttemptRepository attempts;
     private AuthAudit audit;
     private Messages messages;
+    private AuthEffects effects;
     private LoginThrottle throttle;
     private RestrictionListener restrictionListener;
 
@@ -88,7 +89,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
         attempts = new SqlLoginAttemptRepository(database, executors.io(), getLogger());
         throttle = new LoginThrottle(settings.auth().throttle(), Clock.systemUTC(), attempts);
         audit = new AuthAudit(getDataFolder().toPath(), getLogger(), settings.audit());
-        AuthEffects effects = new AuthEffects(this, messages);
+        effects = new AuthEffects(this, messages);
         auth = new AuthService(this, accounts, hasher, executors, sessions, throttle, audit, effects, messages,
                 pack, settings.auth());
 
@@ -111,10 +112,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
         command("nexus").setTabCompleter(admin);
 
         auth.startTicker();
-        if (settings.auth().premiumAutoLogin() && !getServer().getOnlineMode()) {
-            getLogger().warning("premium-auto-login açık ama sunucu offline-mode: güvenlik nedeniyle premium "
-                    + "otomatik giriş DEVRE DIŞI. (İsimle premium tespiti, isim taklidine açıktır.)");
-        }
+        logSecurityWarnings(settings);
 
         // Hiçbir adım ana thread'i bloklamaz: DB + şema ve paket üretimi G/Ç thread'inde,
         // Argon2 ısınması crypto thread'inde; sonuç ana thread'e döner.
@@ -184,14 +182,20 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 || !previous.database().equals(updated.database())
                 || !previous.hashing().equals(updated.hashing())
                 || !previous.pack().equals(updated.pack())
-                || !previous.audit().equals(updated.audit());
+                || !previous.audit().equals(updated.audit())
+                // Menü/mesaj markası canlı uygulanır; kaynak paketinin GÖRSELİ ise açılışta
+                // üretildiği için tam etki ancak yeniden başlatmayla alınır.
+                || !previous.branding().equals(updated.branding());
 
         try {
             auth.applySettings(updated.auth());
             throttle.updateSettings(updated.auth().throttle());
             restrictionListener.updateAllowedCommands(updated.auth().allowedCommands());
+            // Marka önce uygulanır: reload() palette'i okur, ardından efektler tazelenir.
+            messages.applyBranding(updated.branding());
             // Dil değişmiş olabilir; reloadConfig() yukarıda çağrıldı.
             messages.reload();
+            effects.reloadBranding();
         } catch (RuntimeException e) {
             getLogger().log(Level.WARNING, "Ayarlar canlı uygulanırken hata oluştu.", e);
             return AdminCommand.ReloadOutcome.failed(String.valueOf(e.getMessage()));
@@ -200,6 +204,36 @@ public final class NexusLoginPlugin extends JavaPlugin {
         getLogger().info(() -> "Yapılandırma yeniden yüklendi"
                 + (restartRequired ? " (bazı değişiklikler için yeniden başlatma gerekli)." : "."));
         return AdminCommand.ReloadOutcome.ok(restartRequired);
+    }
+
+    /**
+     * Yapılandırmanın güvenlik açısından riskli kombinasyonlarını açılışta konsola yazar.
+     * Sunucu sahibi "güvenli varsayılan" beklentisiyle yanlış kurulum yapmamalıdır.
+     */
+    private void logSecurityWarnings(PluginSettings settings) {
+        if (!settings.auth().rememberFor().isZero()) {
+            getLogger().warning("session-remember-minutes > 0: \"beni hatırla\" aynı IP + UUID ile PIN'i "
+                    + "atlar. Proxy/relay veya offline-mode arkasında bu, hesap devralmaya yol açabilir; "
+                    + "mümkünse 0 tutun.");
+        }
+        if (!getServer().getOnlineMode()) {
+            getLogger().warning("Sunucu offline-mode: UUID oyuncu adından türetilir ve istemci IP'si "
+                    + "sahtelenebilir. BungeeCord legacy forwarding kullanıyorsanız backend portunu dışarıya "
+                    + "KAPATIN ve Velocity modern forwarding / PROXY protocol kullanın.");
+        }
+        if (settings.auth().premiumAutoLogin()) {
+            if (!getServer().getOnlineMode()) {
+                getLogger().warning("premium-auto-login açık ama sunucu offline-mode: güvenlik nedeniyle premium "
+                        + "otomatik giriş DEVRE DIŞI. (İsimle premium tespiti, isim taklidine açıktır.)");
+            } else {
+                getLogger().warning("premium-auto-login açık: çalınmış bir Mojang/Microsoft oturumu PIN "
+                        + "sorulmadan giriş yapar (ikinci faktör yok).");
+            }
+        }
+        if (settings.hashing().pepper().isEmpty()) {
+            getLogger().warning("security.argon2.pepper boş: veritabanı sızarsa PIN hash'leri pepper "
+                    + "olmadan çevrimdışı kırılabilir. En az 16 karakterlik rastgele bir değer ayarlayın.");
+        }
     }
 
     /** Paket hatası eklentiyi durdurmaz: menü cam panelli yedek tasarımla çalışmaya devam eder. */

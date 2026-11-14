@@ -34,6 +34,20 @@ class ConfigFileTest {
         assertTrue(config.isString("language"), "language anahtarı eksik");
     }
 
+    @Test
+    void shippedDefaultsAreSecure() {
+        PluginSettings settings = PluginSettings.load(load());
+
+        assertTrue(settings.auth().rememberFor().isZero(),
+                "varsayılan olarak 'beni hatırla' kapalı olmalı (IP+UUID modeli relay arkasında güvenli değil)");
+        assertFalse(settings.auth().premiumAutoLogin(),
+                "varsayılan olarak premium otomatik giriş kapalı olmalı");
+        assertEquals("disable", settings.database().sslMode(),
+                "varsayılan TLS kipi belgelenen değer olmalı");
+        assertTrue(settings.hashing().pepper().isEmpty(),
+                "varsayılan pepper boş olmalı (mevcut PIN'leri geçersiz kılmamak için)");
+    }
+
     private static YamlConfiguration load() {
         try (InputStream in = ConfigFileTest.class.getResourceAsStream("/config.yml")) {
             assertNotNull(in, "config.yml kaynağı bulunamadı");

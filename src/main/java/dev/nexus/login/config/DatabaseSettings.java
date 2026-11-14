@@ -3,7 +3,9 @@ package dev.nexus.login.config;
 import dev.nexus.login.database.DatabaseType;
 import org.bukkit.configuration.ConfigurationSection;
 
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 public record DatabaseSettings(
         DatabaseType type,
@@ -13,14 +15,20 @@ public record DatabaseSettings(
         String database,
         String username,
         String password,
+        String sslMode,
         int maximumPoolSize,
         int minimumIdle,
         long connectionTimeoutMs,
         long maxLifetimeMs
 ) {
 
+    /** MariaDB Connector/J tarafından kabul edilen TLS kipleri. */
+    private static final Set<String> SSL_MODES =
+            Set.of("disable", "trust", "verify-ca", "verify-full");
+
     public DatabaseSettings {
         Objects.requireNonNull(type, "type");
+        sslMode = sslMode == null ? "" : sslMode.trim().toLowerCase(Locale.ROOT);
         if (type == DatabaseType.SQLITE) {
             requireNotBlank(sqliteFile, "database.sqlite.file");
         } else if (type == DatabaseType.MARIADB) {
@@ -29,6 +37,10 @@ public record DatabaseSettings(
             requireNotBlank(username, "database.mariadb.username");
             if (port < 1 || port > 65_535) {
                 throw new IllegalArgumentException("database.mariadb.port 1-65535 aralığında olmalı: " + port);
+            }
+            if (!SSL_MODES.contains(sslMode)) {
+                throw new IllegalArgumentException("database.mariadb.ssl-mode geçersiz: '" + sslMode
+                        + "' (disable, trust, verify-ca veya verify-full olmalı)");
             }
         }
         if (maximumPoolSize < 1) {
@@ -56,6 +68,9 @@ public record DatabaseSettings(
                 s.getString("mariadb.database", "nexus"),
                 s.getString("mariadb.username", "nexus"),
                 s.getString("mariadb.password", ""),
+                // Güvenlik için önerilen: verify-full. Geriye dönük uyumluluk adına varsayılan
+                // disable; uzak sunucularda açıkça yükseltilmelidir (açılışta uyarı verilir).
+                s.getString("mariadb.ssl-mode", "disable"),
                 pool.getInt("maximum-pool-size", 10),
                 pool.getInt("minimum-idle", 2),
                 pool.getLong("connection-timeout-ms", 5_000L),
@@ -75,7 +90,7 @@ public record DatabaseSettings(
         if (type == DatabaseType.SQLITE) {
             return "DatabaseSettings[type=SQLITE, file=%s]".formatted(sqliteFile);
         }
-        return "DatabaseSettings[type=%s, host=%s, port=%d, database=%s, user=%s, password=***]"
-                .formatted(type, host, port, database, username);
+        return "DatabaseSettings[type=%s, host=%s, port=%d, database=%s, user=%s, sslMode=%s, password=***]"
+                .formatted(type, host, port, database, username, sslMode);
     }
 }

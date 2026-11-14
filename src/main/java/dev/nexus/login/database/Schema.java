@@ -13,7 +13,7 @@ public final class Schema {
      * değeriyle karşılaştırılır. Tablo yapısı değiştiğinde bu sayı artırılmalı ve
      * {@code DatabaseManager.applyMigrations} içine ilgili adım eklenmelidir.
      */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** {@code nexus_meta} tablosunda şema sürümünün tutulduğu anahtar. */
     public static final String VERSION_KEY = "schema_version";
@@ -41,7 +41,8 @@ public final class Schema {
                         last_ip       VARCHAR(45)  NULL
                     )
                     """,
-                    "CREATE INDEX IF NOT EXISTS idx_nexus_accounts_name ON nexus_accounts (player_name)",
+                    // İsim tekilliği v2 migration'ında (dedupe sonrası) oluşturulur; burada
+                    // non-unique indeks yaratmak eski veritabanlarında çakışmayı erken tetiklerdi.
                     "CREATE INDEX IF NOT EXISTS idx_nexus_accounts_reg_ip ON nexus_accounts (reg_ip)",
                     """
                     CREATE TABLE IF NOT EXISTS nexus_login_attempts (
@@ -73,7 +74,6 @@ public final class Schema {
                         last_ip       VARCHAR(45)  NULL,
                         PRIMARY KEY (id),
                         UNIQUE KEY uk_nexus_accounts_uuid (uuid),
-                        KEY idx_nexus_accounts_name (player_name),
                         KEY idx_nexus_accounts_reg_ip (reg_ip)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     """,

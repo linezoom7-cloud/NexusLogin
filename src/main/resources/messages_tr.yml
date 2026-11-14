@@ -138,6 +138,12 @@ kick:
     <muted>Veritabanı şu an yanıt vermiyor.</muted>
     <glow>Lütfen biraz sonra tekrar dene.</glow>
 
+  inventory: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>ENVANTER YEDEĞİ OKUNAMADI</bold></gradient>
+
+    <muted>Kayıtlı envanterin geri yüklenemedi.</muted>
+    <glow>Lütfen bir sunucu yöneticisine başvur.</glow>
+
   name-taken: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>İSİM ZATEN KAYITLI</bold></gradient>
 
@@ -178,8 +184,9 @@ command:
       - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [oyuncu]</neon> <muted>— PIN sormadan giriş yaptır</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— yapılandırmayı ve dili yeniden yükle</muted>"
     reloaded: "<prefix> <success>Yapılandırma ve mesajlar yeniden yüklendi.</success>"
-    reloaded-restart: "<prefix> <success>Yapılandırma yeniden yüklendi.</success> <muted>Veritabanı, hash, kaynak paketi ve denetim günlüğü değişiklikleri için sunucuyu yeniden başlatın.</muted>"
+    reloaded-restart: "<prefix> <success>Yapılandırma yeniden yüklendi.</success> <muted>Veritabanı, hash, kaynak paketi, marka (paket görseli) ve denetim günlüğü değişiklikleri için sunucuyu yeniden başlatın.</muted>"
     reload-failed: "<prefix> <danger>Yeniden yükleme başarısız: <error></danger>"
+    invalid-ip: "<prefix> <danger><ip> geçerli bir IPv4/IPv6 adresi değil.</danger>"
     delete-failed: "<prefix> <danger><player> hesabı silinemedi. Konsolu kontrol edin.</danger>"
     not-found: "<prefix> <danger><player> adında kayıtlı hesap yok.</danger>"
     not-online: "<prefix> <danger><player> şu an oyunda değil.</danger>"

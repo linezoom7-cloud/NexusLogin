@@ -9,6 +9,7 @@ build/
 *.ipr
 *.iws
 out/
+bin/
 
 # Database & Runtime files
 *.db

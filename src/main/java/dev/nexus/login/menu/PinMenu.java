@@ -107,6 +107,11 @@ public final class PinMenu implements InventoryHolder {
         this.firstEntry = carry.firstEntry() == null ? null : Arrays.copyOf(carry.firstEntry(), carry.firstEntry().length);
         this.busy = carry.busy();
         this.notice = carry.notice();
+        // Kopyalar menüye alındı; PIN parçalarını taşıyan geçici Carry dizilerini sil.
+        Arrays.fill(carry.input(), '\0');
+        if (carry.firstEntry() != null) {
+            Arrays.fill(carry.firstEntry(), '\0');
+        }
         render();
     }
 

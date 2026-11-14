@@ -3,9 +3,12 @@ package dev.nexus.login.concurrent;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -24,6 +27,12 @@ import java.util.logging.Logger;
 public final class NexusExecutors implements AutoCloseable {
 
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 10;
+    /**
+     * Crypto kuyruğu SINIRLIDIR: giriş spam'i sırasında görevler sınırsız biriktirilirse
+     * (her biri bir char[] PIN tutar) bellek şişer. Kuyruk dolunca istek reddedilir;
+     * Argon2idHasher bunu yakalayıp kullanıcıya hata döndürür.
+     */
+    private static final int CRYPTO_QUEUE_CAPACITY = 64;
 
     private final Plugin plugin;
     private final Logger logger;
@@ -36,8 +45,17 @@ public final class NexusExecutors implements AutoCloseable {
         this.logger = plugin.getLogger();
         this.io = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("nexus-io-", 0).factory());
-        this.crypto = Executors.newFixedThreadPool(cryptoThreads,
-                Thread.ofPlatform().name("nexus-argon2-", 0).daemon(true).factory());
+        this.crypto = new ThreadPoolExecutor(
+                cryptoThreads, cryptoThreads,
+                0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(CRYPTO_QUEUE_CAPACITY),
+                Thread.ofPlatform().name("nexus-argon2-", 0).daemon(true).factory(),
+                (task, pool) -> {
+                    // Saldırı altında log spam'i olmasın; yine de teşhis için iz bırakılır.
+                    logger.fine(() -> "Argon2 kuyruğu dolu (" + CRYPTO_QUEUE_CAPACITY
+                            + "); giriş isteği reddedildi.");
+                    throw new RejectedExecutionException("nexus-argon2 kuyruğu dolu");
+                });
         this.mainThread = this::runOnMainThread;
     }
 

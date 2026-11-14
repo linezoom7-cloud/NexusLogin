@@ -18,15 +18,21 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Optional;
@@ -48,6 +54,7 @@ public final class AuthService {
     private static final long MENU_DELAY_TICKS = 20L;
     private static final long PACK_WAIT_TICKS = 20L * 30;
     private static final long REOPEN_DELAY_TICKS = 10L;
+    private static final String INVENTORY_BACKUP_DIR = "inventory-backup";
 
     private final Plugin plugin;
     private final Logger logger;
@@ -157,14 +164,29 @@ public final class AuthService {
         if (sessions.get(player.getUniqueId()) != null) {
             return;
         }
+        // Önceki çökme giriş ekranında olduysa envanter bellekte kalmıştı; diskteki
+        // yedekten geri yükle ki oyuncu eşyalarını kaybetmesin.
+        if (!recoverInventoryBackup(player)) {
+            // Yedek okunamadı. Devam etmek, aşağıdaki gizleme adımının boş envanteri aynı
+            // dosyaya yazıp eski yedeği yok etmesi demekti. Oyuncuyu içeri almadan at;
+            // dosya yerinde kalsın ki yönetici elle kurtarabilsin.
+            kick(player, "kick.inventory");
+            return;
+        }
         String ip = ipOf(player);
         AuthSession session = sessions.create(player.getUniqueId(), ip, settings.timeout());
         // Hesap bilgisi gelmeden önce bile kısıtla: hiçbir tick boyunca açık kapı bırakma.
         session.restrictionSnapshot(effects.applyRestrictions(player));
         session.originalLocation(player.getLocation());
         if (settings.hideInventory()) {
-            session.storedInventory(player.getInventory().getContents().clone());
-            player.getInventory().clear();
+            ItemStack[] contents = player.getInventory().getContents().clone();
+            // Yedek yazılamazsa envanteri TEMİZLEME: gizleme kozmetiktir, eşya kaybı değildir.
+            if (backupInventory(player, contents)) {
+                session.storedInventory(contents);
+                player.getInventory().clear();
+            } else {
+                logger.warning(() -> "Envanter gizlenemedi (yedek yazılamadı): " + player.getName());
+            }
         }
         if (settings.teleportToSpawn()) {
             player.teleport(player.getWorld().getSpawnLocation());
@@ -235,15 +257,24 @@ public final class AuthService {
     private void premiumLogin(Player player, AuthSession session) {
         Account account = session.account();
         if (account == null) {
+            // Hesap satırı oluşmadan girişi tamamlamak, updateLastLogin'in hiçbir satırı
+            // güncellememesine ve yarışta kaybolan bir kayda yol açıyordu.
             accounts.create(session.uuid(), player.getName(), null, true, session.ip())
                     .whenCompleteAsync((created, error) -> {
+                        if (!isCurrent(player, session)) {
+                            return;
+                        }
                         if (error != null) {
                             logger.log(Level.SEVERE, "Premium hesap oluşturulamadı: " + player.getName(), error);
-                        } else if (isCurrent(player, session)) {
-                            session.account(created);
+                            kick(player, "kick.database");
+                            return;
                         }
+                        session.account(created);
+                        completeLogin(player, session, LoginKind.PREMIUM);
                     }, executors.mainThread());
-        } else if (!account.premium()) {
+            return;
+        }
+        if (!account.premium()) {
             session.account(account.withPremium(true));
             logFailure(accounts.setPremium(session.uuid(), true), "premium işareti");
         }
@@ -341,12 +372,28 @@ public final class AuthService {
         if (current == null || current.styled() || !session.packLoaded() || !isCurrent(player, session)) {
             return;
         }
+        if (current.busy()) {
+            // Doğrulama/hash sürerken menüyü değiştirmek, tamamlanacak callback'in eski
+            // menüye yazmasına ve yeni menünün sonsuza dek "busy" kalmasına yol açıyordu.
+            // İş bitince aşağıdaki retryStyledRefresh çağrısı devralır.
+            session.styledRefreshPending(true);
+            return;
+        }
         PinMenu.Carry carry = current.carry();
         openMenu(player, session, carry.mode());
         PinMenu fresh = session.menu();
         if (fresh != null) {
             fresh.restore(carry);
         }
+    }
+
+    /** Menü meşgulken ertelenen glifli görünüm geçişini, iş bitince uygular. */
+    private void retryStyledRefresh(Player player, AuthSession session) {
+        if (!session.styledRefreshPending()) {
+            return;
+        }
+        session.styledRefreshPending(false);
+        refreshStyledMenu(player, session);
     }
 
     private void openMenu(Player player, AuthSession session, PinMenuMode mode) {
@@ -484,6 +531,7 @@ public final class AuthService {
                 wipe(rehashCopy);
                 logger.log(Level.SEVERE, "PIN doğrulanamadı: " + player.getName(), error);
                 fail(player, menu, messages.get("pin.internal-error"));
+                retryStyledRefresh(player, session);
                 return;
             }
             switch (result) {
@@ -494,10 +542,12 @@ public final class AuthService {
                         wipe(rehashCopy);
                     }
                     onSuccess.run();
+                    retryStyledRefresh(player, session);
                 }
                 case VerificationResult.Mismatch() -> {
                     wipe(rehashCopy);
                     wrongPin(player, session, menu);
+                    retryStyledRefresh(player, session);
                 }
             }
         }, executors.mainThread());
@@ -556,7 +606,9 @@ public final class AuthService {
                 })
                 .thenCompose(hash -> existing == null
                         ? accounts.create(session.uuid(), player.getName(), hash, false, session.ip())
-                        : accounts.updatePasswordHash(session.uuid(), hash).thenApply(ok -> existing.withPasswordHash(hash)))
+                        : accounts.updatePasswordHash(session.uuid(), hash).thenCompose(ok -> ok
+                                ? CompletableFuture.completedFuture(existing.withPasswordHash(hash))
+                                : CompletableFuture.failedFuture(new PinSaveFailed())))
                 .whenCompleteAsync((account, error) -> {
                     wipe(pin); // hasher zaten sildi; IP limiti gibi erken çıkışlarda da silindiğinden emin ol
                     if (!isCurrent(player, session) || session.menu() != menu) {
@@ -572,9 +624,11 @@ public final class AuthService {
                             logger.log(Level.SEVERE, "Kayıt başarısız: " + player.getName(), error);
                             fail(player, menu, messages.get("pin.internal-error"));
                         }
+                        retryStyledRefresh(player, session);
                         return;
                     }
                     session.account(account);
+                    sessions.invalidateRemembered(session.uuid());
                     completeLogin(player, session, LoginKind.REGISTER);
                 }, executors.mainThread());
     }
@@ -587,7 +641,9 @@ public final class AuthService {
         }
         menu.busy(true);
         hasher.hash(pin)
-                .thenCompose(hash -> accounts.updatePasswordHash(session.uuid(), hash).thenApply(ok -> hash))
+                .thenCompose(hash -> accounts.updatePasswordHash(session.uuid(), hash).thenCompose(ok -> ok
+                        ? CompletableFuture.completedFuture(hash)
+                        : CompletableFuture.failedFuture(new PinSaveFailed())))
                 .whenCompleteAsync((hash, error) -> {
                     if (!isCurrent(player, session) || session.menu() != menu) {
                         return;
@@ -597,9 +653,12 @@ public final class AuthService {
                         logger.log(Level.SEVERE, "PIN değiştirilemedi: " + player.getName(), error);
                         menu.mode(PinMenuMode.CHANGE_NEW);
                         fail(player, menu, messages.get("pin.internal-error"));
+                        retryStyledRefresh(player, session);
                         return;
                     }
                     session.account(account.withPasswordHash(hash));
+                    // Eski PIN'e bağlı "beni hatırla" kaydı yeni PIN ile birlikte geçersizdir.
+                    sessions.invalidateRemembered(session.uuid());
                     closeMenu(player, session);
                     player.sendMessage(messages.get("pin.changed"));
                     audit.pinChanged(player.getName(), session.uuid(), session.ip());
@@ -609,14 +668,23 @@ public final class AuthService {
 
     /** Config'te Argon2 maliyeti artırıldıysa, başarılı girişte hash sessizce güçlendirilir. */
     private void upgradeHash(AuthSession session, char[] pin) {
-        CompletableFuture<Boolean> saved = hasher.hash(pin)
-                .thenCompose(hash -> accounts.updatePasswordHash(session.uuid(), hash));
-        logFailure(saved, "hash yükseltme");
+        hasher.hash(pin)
+                .thenCompose(hash -> accounts.updatePasswordHash(session.uuid(), hash))
+                .thenAccept(ok -> {
+                    if (!ok) {
+                        logger.warning(() -> "Hash yükseltmesi kaydedilemedi (hesap bulunamadı): " + session.uuid());
+                    }
+                })
+                .exceptionally(error -> {
+                    logger.log(Level.WARNING, "Arka plan işlemi başarısız (hash yükseltme)", error);
+                    return null;
+                });
     }
 
     // ═════════════════════════ sonuç ═════════════════════════
 
     private void completeLogin(Player player, AuthSession session, LoginKind kind) {
+        sessions.allowRemember(session.uuid());
         session.state(AuthState.AUTHENTICATED);
         session.waitingForPack(false);
         detachUi(player, session);
@@ -635,7 +703,9 @@ public final class AuthService {
             case PIN, FORCED -> effects.success(player, "title.success-sub");
         }
 
-        if (session.account() != null && kind != LoginKind.PREMIUM) {
+        // Premium dahil her giriş türünde ad/IP güncellenir; premium hesap artık create
+        // tamamlandıktan sonra buraya geldiği için satır her zaman vardır.
+        if (session.account() != null) {
             logFailure(accounts.updateLastLogin(session.uuid(), player.getName(), session.ip()), "son giriş kaydı");
         }
         logger.info(() -> player.getName() + " giriş yaptı (" + kind + ").");
@@ -709,6 +779,94 @@ public final class AuthService {
             player.teleport(session.originalLocation());
             session.originalLocation(null);
         }
+        // Oturum bitiyor: yedek dosyası normalde yukarıda silindi. Silme daha önce başarısız
+        // olduysa veya oturum zaten authenticated ise artık kalan dosya güncel değildir;
+        // bir sonraki girişte eski envanteri geri yüklememesi için burada da temizlenir.
+        deleteInventoryBackup(player);
+        // Aynı snapshot'ın çıkışta ikinci kez uygulanmasını engelle.
+        session.restrictionSnapshot(null);
+    }
+
+    private Path inventoryBackupFile(Player player) {
+        return plugin.getDataFolder().toPath()
+                .resolve(INVENTORY_BACKUP_DIR)
+                .resolve(player.getUniqueId() + ".yml");
+    }
+
+    /**
+     * Envanter gizlenmeden ÖNCE diske yedekler. Yalnızca bellekte tutmak, sunucu çökerse
+     * oyuncunun eşyalarının kalıcı olarak kaybolmasına yol açıyordu.
+     */
+    private boolean backupInventory(Player player, ItemStack[] contents) {
+        Path file = inventoryBackupFile(player);
+        try {
+            Files.createDirectories(file.getParent());
+            YamlConfiguration yaml = new YamlConfiguration();
+            ConfigurationSection items = yaml.createSection("items");
+            for (int slot = 0; slot < contents.length; slot++) {
+                if (contents[slot] != null) {
+                    items.set(Integer.toString(slot), contents[slot]);
+                }
+            }
+            yaml.save(file.toFile());
+            return true;
+        } catch (IOException | RuntimeException e) {
+            logger.log(Level.SEVERE, "Envanter yedeği yazılamadı: " + player.getName(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Çökme sonrası kalan envanter yedeğini oyuncuya geri verir.
+     *
+     * @return yedek yoksa veya başarıyla geri yüklendiyse {@code true}; dosya var ama
+     *         okunamadıysa {@code false} (dosya SİLİNMEZ, yönetici kurtarabilir)
+     */
+    private boolean recoverInventoryBackup(Player player) {
+        Path file = inventoryBackupFile(player);
+        if (!Files.isRegularFile(file)) {
+            return true;
+        }
+        try {
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file.toFile());
+            ConfigurationSection items = yaml.getConfigurationSection("items");
+            if (items != null) {
+                ItemStack[] restored = new ItemStack[player.getInventory().getSize()];
+                for (String key : items.getKeys(false)) {
+                    try {
+                        int slot = Integer.parseInt(key);
+                        if (slot >= 0 && slot < restored.length) {
+                            restored[slot] = items.getItemStack(key);
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // Bozuk anahtar: yalnızca o slot atlanır.
+                    }
+                }
+                player.getInventory().setContents(restored);
+                logger.warning(() -> "Yarım kalan girişten envanter geri yüklendi: " + player.getName());
+            }
+        } catch (RuntimeException e) {
+            // YamlConfiguration.loadConfiguration IOException'ı kendi içinde yutar; bozuk
+            // dosya InvalidConfigurationException (RuntimeException) olarak buraya düşer.
+            logger.log(Level.SEVERE, "Envanter yedeği geri yüklenemedi: " + player.getName(), e);
+            return false;
+        }
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            // Envanter zaten geri verildi; dosya bir sonraki açılışta tekrar okunur
+            // (aynı içerik, veri kaybı yok).
+            logger.log(Level.WARNING, "Envanter yedek dosyası silinemedi: " + player.getName(), e);
+        }
+        return true;
+    }
+
+    private void deleteInventoryBackup(Player player) {
+        try {
+            Files.deleteIfExists(inventoryBackupFile(player));
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Envanter yedek dosyası silinemedi: " + player.getName(), e);
+        }
     }
 
     private void kick(Player player, String key, TagResolver... placeholders) {
@@ -767,6 +925,13 @@ public final class AuthService {
 
     private static final class IpLimitReached extends RuntimeException {
         IpLimitReached() {
+            super(null, null, false, false);
+        }
+    }
+
+    /** UPDATE 0 satır etkiledi: hesap silinmiş veya DB yazımı sessizce başarısız. */
+    private static final class PinSaveFailed extends RuntimeException {
+        PinSaveFailed() {
             super(null, null, false, false);
         }
     }

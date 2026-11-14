@@ -31,6 +31,8 @@ public final class AuthSession {
     private @Nullable Account account;
     private boolean waitingForPack;
     private boolean packLoaded;
+    /** Paket yüklenirken menü meşguldü; iş bitince glifli görünüme geçilmeli. */
+    private boolean styledRefreshPending;
     private @Nullable PinMenu menu;
     private @Nullable BossBar bossBar;
     private @Nullable Location originalLocation;
@@ -86,6 +88,14 @@ public final class AuthSession {
 
     void packLoaded(boolean value) {
         this.packLoaded = value;
+    }
+
+    boolean styledRefreshPending() {
+        return styledRefreshPending;
+    }
+
+    void styledRefreshPending(boolean value) {
+        this.styledRefreshPending = value;
     }
 
     public @Nullable PinMenu menu() {

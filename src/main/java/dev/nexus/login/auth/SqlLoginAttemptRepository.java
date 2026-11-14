@@ -10,11 +10,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -54,23 +56,46 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
             "DELETE FROM nexus_login_attempts WHERE updated_at < ? AND locked_until <= ?";
 
     private static final long CLOSE_TIMEOUT_SECONDS = 5;
+    /**
+     * Yazma kuyruğu SINIRLIDIR. Sınırsız kuyruk + yavaş DB, kaba kuvvet saldırısında
+     * milyonlarca görev biriktirip belleği tüketebilirdi. Kuyruk dolunca yazma atlanır;
+     * asıl doğruluk kaynağı bellekteki {@link LoginThrottle} durumudur.
+     */
+    private static final int WRITE_QUEUE_CAPACITY = 1_024;
+    private static final long DROP_LOG_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(30);
 
     private final DatabaseManager database;
     private final Executor ioExecutor;
     private final Logger logger;
     private final String upsert;
     private final ExecutorService writes;
+    private final AtomicLong lastDropLogNanos = new AtomicLong();
 
     public SqlLoginAttemptRepository(DatabaseManager database, Executor ioExecutor, Logger logger) {
         this.database = database;
         this.ioExecutor = ioExecutor;
         this.logger = logger;
         this.upsert = database.type() == DatabaseType.SQLITE ? SQLITE_UPSERT : MARIADB_UPSERT;
-        this.writes = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "nexus-attempts");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.writes = new ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(WRITE_QUEUE_CAPACITY),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "nexus-attempts");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                // Kuyruk dolu: görevi düşür ama bunu (seyrek de olsa) logla.
+                (task, executor) -> logDroppedWrite());
+    }
+
+    /** Kuyruk taşmasını en fazla 30 saniyede bir loglar; saldırı altında log spam'i olmaz. */
+    private void logDroppedWrite() {
+        long now = System.nanoTime();
+        long previous = lastDropLogNanos.get();
+        if (now - previous >= DROP_LOG_INTERVAL_NANOS && lastDropLogNanos.compareAndSet(previous, now)) {
+            logger.warning("Kaba kuvvet yazma kuyruğu dolu; bazı güncellemeler kalıcılaştırılamadı "
+                    + "(bellek korunuyor).");
+        }
     }
 
     @Override

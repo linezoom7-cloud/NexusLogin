@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "dev.nexus"
-version = "1.0.0"
+version = "1.0.1"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))
@@ -38,6 +38,9 @@ dependencies {
     testImplementation("de.mkammerer:argon2-jvm:$argon2Version")
     testImplementation("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
     testImplementation("io.netty:netty-all:4.1.97.Final")
+    // Gerçek SQLite üzerinde şema/migration entegrasyon testleri için.
+    testImplementation("com.zaxxer:HikariCP:$hikariVersion")
+    testImplementation("org.xerial:sqlite-jdbc:3.47.1.0")
 }
 
 tasks {

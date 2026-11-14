@@ -54,6 +54,10 @@ database:
     database: nexus
     username: nexus
     password: "degistir-beni"
+    # TLS kipi: disable | trust | verify-ca | verify-full
+    # Uzak bir veritabanı sunucusu kullanıyorsanız MUTLAKA verify-full yapın; aksi halde
+    # kimlik bilgileri ve PIN hash'leri ağda şifresiz gider. (localhost için disable yeterli.)
+    ssl-mode: disable
 
   # HikariCP havuz ayarları. SQLite'ta havuz boyutu yazma kilidi çakışmalarını
   # önlemek için kod tarafında her zaman 1'e sabitlenir.
@@ -73,7 +77,10 @@ auth:
   # Aynı IP'den açılabilecek en fazla hesap (0 = sınırsız).
   max-accounts-per-ip: 3
   # Giriş yapmış oyuncu, aynı IP'den bu süre içinde dönerse PIN sorulmaz (0 = kapalı).
-  session-remember-minutes: 10
+  # ⚠ GÜVENLİK: Bu özellik IP + UUID'ye güvenir. Aynı IP'yi paylaşan oyuncular (relay,
+  # proxy, MCSH, CGNAT) veya offline-mode'da isim taklidi, PIN'i tamamen atlatabilir.
+  # Varsayılan bu yüzden 0'dır; yalnızca güvenilir bir ağda ve kısa süreyle açın.
+  session-remember-minutes: 0
   # Giriş yapana kadar oyuncuyu güvenli dünya spawn noktasına ışınla.
   teleport-to-spawn: false
   # Başarılı giriş sonrası oyuncuyu oyundan çıktığı eski konumuna geri döndür.
@@ -110,7 +117,9 @@ auth:
   # Premium otomatik giriş YALNIZCA server.properties'te online-mode=true iken çalışır.
   # Offline-mode sunucuda isimle premium tespiti güvensizdir (herkes "Notch" ismini yazabilir),
   # bu yüzden orada bu özellik bilerek devre dışıdır.
-  premium-auto-login: true
+  # ⚠ Çalınmış bir Mojang/Microsoft oturumu PIN sorulmadan doğrudan erişim demektir (ikinci
+  # faktör yoktur). Varsayılan kapalıdır; yalnızca bunu bilerek açın.
+  premium-auto-login: false
 
 resource-pack:
   # Eklenti, neon PIN menüsünün arka planını içeren küçük bir kaynak paketini kendisi üretir
@@ -154,6 +163,11 @@ security:
     # Döndürme sonrası saklanacak eski dosya sayısı (1-100).
     keep-files: 5
   argon2:
+    # Sunucu tarafı gizli anahtar (pepper). Boş değilse PIN, Argon2'den önce HMAC-SHA256 ile
+    # bağlanır: yalnızca veritabanı sızsa bile hash'ler pepper olmadan çevrimdışı kırılamaz.
+    # En az 16 karakter. Boş = kapalı (geriye dönük uyumlu).
+    # ⚠ Bir kez ayarladıktan sonra DEĞİŞTİRMEYİN: mevcut tüm PIN'ler geçersiz olur.
+    pepper: ""
     # Hash başına kullanılacak RAM (KiB). 65536 = 64 MiB. OWASP alt sınırı 19456 (19 MiB).
     memory-kib: 65536
     # Zaman maliyeti (geçiş sayısı).

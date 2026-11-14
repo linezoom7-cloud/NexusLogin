@@ -58,14 +58,18 @@ public record AuthSettings(
         return new AuthSettings(
                 Duration.ofSeconds(s.getLong("timeout-seconds", 120)),
                 s.getInt("max-accounts-per-ip", 3),
-                Duration.ofMinutes(Math.max(0, s.getLong("session-remember-minutes", 10))),
+                // Güvenli varsayılan: kapalı. IP+UUID tabanlı "beni hatırla", relay veya
+                // offline-mode arkasında PIN'i tamamen atlatabildiği için açıkça istenmeli.
+                Duration.ofMinutes(Math.max(0, s.getLong("session-remember-minutes", 0))),
                 // 6 hane yalnızca 1.000.000 olasılıktır; veritabanı sızarsa saatler içinde kırılır.
                 s.getInt("pin.min-length", 8),
                 s.getInt("pin.max-length", 9),
                 s.getStringList("allowed-commands").stream()
                         .map(c -> c.toLowerCase(Locale.ROOT).replace("/", ""))
                         .collect(Collectors.toSet()),
-                s.getBoolean("premium-auto-login", true),
+                // İkinci faktörü kaldırdığı için varsayılan kapalı; çalınmış bir Mojang
+                // oturumu aksi halde doğrudan erişim demek olurdu.
+                s.getBoolean("premium-auto-login", false),
                 s.getBoolean("teleport-to-spawn", false),
                 s.getBoolean("restore-previous-location", true),
                 s.getBoolean("hide-inventory", true),
