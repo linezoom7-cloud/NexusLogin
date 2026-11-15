@@ -117,6 +117,9 @@ public final class AuthService {
 
     private void tick() {
         frame++;
+        if (frame % 300 == 0) {
+            sessions.purgeStalePreloads();
+        }
         Instant now = Instant.now();
         for (AuthSession session : sessions.all()) {
             if (!session.isRestricted()) {

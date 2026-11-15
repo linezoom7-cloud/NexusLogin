@@ -152,6 +152,9 @@ public final class RestrictionListener implements Listener {
     public void onDamage(EntityDamageEvent event) {
         if (restricted(event.getEntity())) {
             event.setCancelled(true);
+            if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
+                event.getEntity().teleport(event.getEntity().getWorld().getSpawnLocation());
+            }
         }
     }
 
@@ -323,6 +326,16 @@ public final class RestrictionListener implements Listener {
     public void onChat(AsyncChatEvent event) {
         if (restricted(event.getPlayer())) {
             deny(event.getPlayer(), event);
+        }
+    }
+
+    /** Eski sohbet paketleri veya köprü eklentilerinden (ViaVersion vb.) gelen eski sohbet olayını da kilitler. */
+    @SuppressWarnings("deprecation")
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onLegacyChat(org.bukkit.event.player.AsyncPlayerChatEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+            event.getPlayer().sendActionBar(messages.get("actionbar.locked"));
         }
     }
 
