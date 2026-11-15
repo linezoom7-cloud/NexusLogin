@@ -31,8 +31,10 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Optional;
@@ -794,11 +796,12 @@ public final class AuthService {
     }
 
     /**
-     * Envanter gizlenmeden ÖNCE diske yedekler. Yalnızca bellekte tutmak, sunucu çökerse
-     * oyuncunun eşyalarının kalıcı olarak kaybolmasına yol açıyordu.
+     * Envanter gizlenmeden ÖNCE diske yedekler. Atomik yazım (temp dosya + ATOMIC_MOVE)
+     * kullanır; böylece yazım sırasında sunucu çökse bile dosya yarım veya bozuk kalmaz.
      */
     private boolean backupInventory(Player player, ItemStack[] contents) {
         Path file = inventoryBackupFile(player);
+        Path tempFile = file.resolveSibling(file.getFileName().toString() + ".tmp." + System.nanoTime());
         try {
             Files.createDirectories(file.getParent());
             YamlConfiguration yaml = new YamlConfiguration();
@@ -808,10 +811,19 @@ public final class AuthService {
                     items.set(Integer.toString(slot), contents[slot]);
                 }
             }
-            yaml.save(file.toFile());
+            yaml.save(tempFile.toFile());
+            try {
+                Files.move(tempFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING);
+            }
             return true;
         } catch (IOException | RuntimeException e) {
             logger.log(Level.SEVERE, "Envanter yedeği yazılamadı: " + player.getName(), e);
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException ignored) {
+            }
             return false;
         }
     }

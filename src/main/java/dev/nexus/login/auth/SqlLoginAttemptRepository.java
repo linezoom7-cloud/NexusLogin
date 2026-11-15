@@ -141,7 +141,9 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
 
     @Override
     public void delete(String key) {
-        writes.execute(() -> {
+        // Admin işlemleri (kilit açma / hesap silme) yazma kuyruğu taşmasından etkilenmemelidir;
+        // bu nedenle doğrudan G/Ç executor'ünde çalıştırılır.
+        CompletableFuture.runAsync(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement ps = connection.prepareStatement(DELETE)) {
                 ps.setString(1, key);
@@ -149,7 +151,7 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "Kaba kuvvet sayacı silinemedi: " + key, e);
             }
-        });
+        }, ioExecutor);
     }
 
     @Override

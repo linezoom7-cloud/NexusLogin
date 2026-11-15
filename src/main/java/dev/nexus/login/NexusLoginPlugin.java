@@ -12,6 +12,7 @@ import dev.nexus.login.command.PlayerCommands;
 import dev.nexus.login.concurrent.NexusExecutors;
 import dev.nexus.login.config.PluginSettings;
 import dev.nexus.login.database.DatabaseManager;
+import dev.nexus.login.listener.EmergencyLockdownListener;
 import dev.nexus.login.listener.ConnectionListener;
 import dev.nexus.login.listener.MenuListener;
 import dev.nexus.login.listener.RestrictionListener;
@@ -71,7 +72,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
             settings = PluginSettings.load(getConfig());
         } catch (IllegalArgumentException e) {
             getLogger().severe("config.yml geçersiz: " + e.getMessage());
-            getServer().getPluginManager().disablePlugin(this);
+            enterLockdown("config.yml geçersiz: " + e.getMessage());
             return;
         }
         this.startupSettings = settings;
@@ -136,8 +137,8 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 .thenCombine(packReady, (a, b) -> (Void) null)
                 .whenCompleteAsync((v, error) -> {
                     if (error != null) {
-                        getLogger().log(Level.SEVERE, "Nexus Login başlatılamadı, eklenti devre dışı bırakılıyor.", error);
-                        getServer().getPluginManager().disablePlugin(this);
+                        getLogger().log(Level.SEVERE, "Nexus Login başlatılamadı, güvenlik kilidi (fail-closed) devreye giriyor.", error);
+                        enterLockdown("Açılış hatası: " + error.getMessage());
                         return;
                     }
                     // Kapanma sırasında tamamlanan hazırlık oyunculara dokunmasın.
@@ -244,6 +245,18 @@ public final class NexusLoginPlugin extends JavaPlugin {
             getLogger().log(Level.WARNING, "Kaynak paketi sunulamadı (delivery="
                     + settings.pack().delivery().id() + ", port=" + settings.pack().port()
                     + "). Menü paketsiz görünümle çalışacak.", e);
+        }
+    }
+
+    /**
+     * Fail-closed güvenlik kilidi: Kritik açılış hatasında sunucuyu ve eklentiyi savunmasız
+     * (şifresiz giriş yapılabilir) bırakmak yerine tüm bağlantıları engelleyen kilide geçer.
+     */
+    private void enterLockdown(String reason) {
+        getLogger().severe("GÜVENLİK KİLİDİ DEVREDE (FAIL-CLOSED): " + reason);
+        getServer().getPluginManager().registerEvents(new EmergencyLockdownListener(reason), this);
+        for (Player online : getServer().getOnlinePlayers()) {
+            online.kick(net.kyori.adventure.text.Component.text("§c[NexusLogin] Güvenlik Kilidi: Kimlik doğrulama sistemi başlatılamadı."));
         }
     }
 

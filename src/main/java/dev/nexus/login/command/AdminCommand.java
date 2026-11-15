@@ -86,14 +86,17 @@ public final class AdminCommand implements TabExecutor {
         String target = args[1];
         TagResolver player = Placeholder.unparsed("player", target);
         switch (sub) {
-            case "info" -> withAccount(sender, target, account -> messages.list("command.admin.info",
-                    Placeholder.unparsed("player", account.playerName()),
-                    Placeholder.unparsed("uuid", account.uuid().toString()),
-                    Placeholder.unparsed("premium", flag(account.premium(), "common.yes", "common.no")),
-                    Placeholder.unparsed("has_pin", flag(account.hasPassword(), "common.present", "common.absent")),
-                    Placeholder.unparsed("reg_ip", ipOrNone(account.registrationIp())),
-                    Placeholder.unparsed("last_ip", ipOrNone(account.lastIp())))
-                    .forEach(sender::sendMessage));
+            case "info" -> withAccount(sender, target, account -> {
+                audit.admin(sender.getName(), "info", account.playerName());
+                messages.list("command.admin.info",
+                        Placeholder.unparsed("player", account.playerName()),
+                        Placeholder.unparsed("uuid", account.uuid().toString()),
+                        Placeholder.unparsed("premium", flag(account.premium(), "common.yes", "common.no")),
+                        Placeholder.unparsed("has_pin", flag(account.hasPassword(), "common.present", "common.absent")),
+                        Placeholder.unparsed("reg_ip", ipOrNone(account.registrationIp())),
+                        Placeholder.unparsed("last_ip", ipOrNone(account.lastIp())))
+                        .forEach(sender::sendMessage);
+            });
             case "unregister", "resetpass" -> accounts.findByName(target)
                     .thenCompose(found -> found.isEmpty()
                             ? CompletableFuture.completedFuture(DeleteOutcome.missing())

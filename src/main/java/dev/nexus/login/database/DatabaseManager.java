@@ -7,6 +7,7 @@ import dev.nexus.login.config.DatabaseSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,6 +16,7 @@ import java.sql.Statement;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -155,10 +157,57 @@ public final class DatabaseManager implements AutoCloseable {
                         + current + ", eklenti v" + Schema.VERSION + "). Lütfen eklentiyi güncelleyin.");
             }
             if (current < Schema.VERSION) {
-                applyMigrations(connection, current);
-                writeVersion(connection, Schema.VERSION);
-                int target = Schema.VERSION;
-                logger.info(() -> "Veritabanı şeması güncellendi: v" + current + " → v" + target + ".");
+                backupBeforeMigration(connection, current);
+                boolean oldAutoCommit = connection.getAutoCommit();
+                try {
+                    connection.setAutoCommit(false);
+                    applyMigrations(connection, current);
+                    writeVersion(connection, Schema.VERSION);
+                    connection.commit();
+                    int target = Schema.VERSION;
+                    logger.info(() -> "Veritabanı şeması güncellendi: v" + current + " → v" + target + ".");
+                } catch (Exception e) {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException rollbackEx) {
+                        logger.log(Level.WARNING, "Migration geri alma (rollback) hatası", rollbackEx);
+                    }
+                    throw new SQLException("Şema migration başarısız oldu, değişiklikler geri alındı: v"
+                            + current + " → v" + Schema.VERSION, e);
+                } finally {
+                    try {
+                        connection.setAutoCommit(oldAutoCommit);
+                    } catch (SQLException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private void backupBeforeMigration(Connection connection, int currentVersion) {
+        switch (settings.type()) {
+            case SQLITE -> {
+                try {
+                    Path dbFile = sqliteFile();
+                    if (Files.exists(dbFile)) {
+                        Path backup = dbFile.resolveSibling(dbFile.getFileName().toString() + ".backup-v"
+                                + currentVersion + "-" + System.currentTimeMillis());
+                        Files.copy(dbFile, backup, StandardCopyOption.REPLACE_EXISTING);
+                        logger.info(() -> "Şema güncellemesi öncesi SQLite yedeği alındı: " + backup.getFileName());
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "SQLite migration öncesi otomatik yedek alınamadı", e);
+                }
+            }
+            case MARIADB -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE IF NOT EXISTS nexus_accounts_backup_v" + currentVersion
+                            + " AS SELECT * FROM nexus_accounts");
+                    logger.info(() -> "Şema güncellemesi öncesi MariaDB yedek tablosu oluşturuldu: nexus_accounts_backup_v"
+                            + currentVersion);
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "MariaDB migration öncesi yedek tablosu oluşturulamadı", e);
+                }
             }
         }
     }

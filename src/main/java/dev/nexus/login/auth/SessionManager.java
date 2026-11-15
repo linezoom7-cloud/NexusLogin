@@ -79,6 +79,9 @@ public final class SessionManager {
         preloaded.values().removeIf(p -> p.loadedAt().isBefore(limit));
         Instant now = Instant.now();
         remembered.values().removeIf(r -> now.isAfter(r.expiresAt()));
+        if (rememberBlocked.size() > 5_000) {
+            rememberBlocked.clear();
+        }
     }
 
     // ── beni hatırla ──

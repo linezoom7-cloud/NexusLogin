@@ -33,9 +33,9 @@ public final class Argon2idHasher implements PasswordHasher {
     /**
      * DB'ye yazabilen bir saldırgan, doğrulama sırasında OOM tetiklemek için PHC string'ine
      * devasa {@code m=} değeri koyabilir. Bu üst sınırlar, meşru bir hash'i reddetmeyecek
-     * kadar geniş ama belleği tüketmeyecek kadar dardır.
+     * kadar geniş ama belleği tüketmeyecek kadar dardır (256 MiB = varsayılanın 4 katı).
      */
-    private static final int MAX_MEMORY_KIB = 1_048_576; // 1 GiB
+    private static final int MAX_MEMORY_KIB = 262_144; // 256 MiB
     private static final int MAX_ITERATIONS = 64;
     private static final int MAX_PARALLELISM = 16;
 

@@ -142,4 +142,22 @@ class SamePortPackServerTest {
                 "karar verildikten sonra handler hattan çıkmalı");
         channel.finishAndReleaseAll();
     }
+
+    @Test
+    void forwardsLegacyPingWithoutWaitingForFourBytes() {
+        SamePortPackServer.HttpHandler handler = new SamePortPackServer.HttpHandler(() -> new byte[]{1});
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        byte[] legacyPing = {(byte) 0xFE, 0x01};
+        channel.writeInbound(Unpooled.copiedBuffer(legacyPing));
+
+        ByteBuf forwarded = channel.readInbound();
+        assertNotNull(forwarded, "Eski (legacy) 2-baytlık ping hemen iletilmeli");
+        byte[] actual = new byte[forwarded.readableBytes()];
+        forwarded.readBytes(actual);
+        assertArrayEquals(legacyPing, actual);
+        forwarded.release();
+        assertNull(channel.pipeline().context(handler),
+                "Legacy ping sonrası handler hattan çıkmalı");
+        channel.finishAndReleaseAll();
+    }
 }

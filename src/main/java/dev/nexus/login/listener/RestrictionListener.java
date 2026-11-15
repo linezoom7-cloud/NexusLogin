@@ -13,6 +13,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -25,14 +26,18 @@ import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerCommandSendEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerEditBookEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerHarvestBlockEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerShearEntityEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 
 import java.util.Collection;
@@ -94,6 +99,49 @@ public final class RestrictionListener implements Listener {
     public void onMove(PlayerMoveEvent event) {
         // Sadece konum değişimi iptal edilir; baş çevirmek serbest (aksi halde ekran titrer).
         if (event.hasChangedPosition() && restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) {
+        if (restricted(event.getPlayer())) {
+            PlayerTeleportEvent.TeleportCause cause = event.getCause();
+            if (cause == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
+                    || cause == PlayerTeleportEvent.TeleportCause.CHORUS_FRUIT
+                    || cause == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL
+                    || cause == PlayerTeleportEvent.TeleportCause.END_PORTAL
+                    || cause == PlayerTeleportEvent.TeleportCause.DISMOUNT
+                    || cause == PlayerTeleportEvent.TeleportCause.SPECTATE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPortal(PlayerPortalEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onConsume(PlayerItemConsumeEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onEditBook(PlayerEditBookEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onSignChange(SignChangeEvent event) {
+        if (restricted(event.getPlayer())) {
             event.setCancelled(true);
         }
     }

@@ -131,6 +131,17 @@ final class SamePortPackServer implements AutoCloseable {
             pending.addComponent(true, buf);
 
             if (!decided) {
+                byte first = pending.getByte(pending.readerIndex());
+                if (first == (byte) 0xFE) {
+                    // Minecraft legacy ping (0xFE 0x01 ...): 4 bayt beklemeden hemen Minecraft hattına devret.
+                    decided = true;
+                    minecraft = true;
+                    ByteBuf buffered = pending;
+                    pending = null;
+                    ctx.fireChannelRead(buffered);
+                    ctx.pipeline().remove(this);
+                    return;
+                }
                 if (pending.readableBytes() < 4) {
                     return;
                 }

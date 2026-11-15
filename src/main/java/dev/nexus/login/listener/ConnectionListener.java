@@ -40,6 +40,7 @@ public final class ConnectionListener implements Listener {
     private final AuthAudit audit;
     private final Messages messages;
     private final Logger logger;
+    private final java.util.Set<String> onlineNames = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public ConnectionListener(Supplier<CompletableFuture<Void>> ready, AccountRepository accounts,
                               SessionManager sessions, LoginThrottle throttle, AuthService auth,
@@ -87,7 +88,7 @@ public final class ConnectionListener implements Listener {
         // Offline-mode'da aynı isimle bağlanan, oyundaki asıl oyuncuyu sunucudan attırır.
         // Bunu engellemek için yeni bağlantı reddedilir, oyundaki oyuncu korunur.
         // (Online-mode'da Mojang kimliği doğruladığı için bu gerekmez; orada vanilla davranışı korunur.)
-        if (!Bukkit.getOnlineMode() && Bukkit.getPlayerExact(name) != null) {
+        if (!Bukkit.getOnlineMode() && onlineNames.contains(name.toLowerCase(java.util.Locale.ROOT))) {
             audit.preLoginDenied(name, event.getUniqueId(), ip, "already-online");
             disallow(event, "kick.already-online");
             return;
@@ -95,7 +96,9 @@ public final class ConnectionListener implements Listener {
 
         try {
             Optional<Account> byUuid = accounts.findByUuid(event.getUniqueId()).get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            if (byUuid.isEmpty()) {
+            // Sadece offline-mode'da isim kontrolü yapılır. Online-mode'da isim değiştiren oyuncuların
+            // eski isimlerini başkası aldığında UUID tek kaynak olduğu için yanlış engelleme yapılmaz.
+            if (!Bukkit.getOnlineMode() && byUuid.isEmpty()) {
                 // "Notch" kayıtlıyken "notch" ile gelen, farklı bir offline UUID alır: kimliğe bürünme girişimi.
                 Optional<Account> byName = accounts.findByName(name).get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 if (byName.isPresent()) {
@@ -123,6 +126,7 @@ public final class ConnectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
+        onlineNames.add(event.getPlayer().getName().toLowerCase(java.util.Locale.ROOT));
         auth.begin(event.getPlayer());
     }
 
@@ -135,6 +139,7 @@ public final class ConnectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
+        onlineNames.remove(event.getPlayer().getName().toLowerCase(java.util.Locale.ROOT));
         auth.onQuit(event.getPlayer());
     }
 
