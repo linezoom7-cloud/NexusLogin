@@ -180,3 +180,13 @@ security:
     # Aynı anda en fazla kaç Argon2 hesaplaması yapılır.
     # Bellek tavanı = max-concurrent x memory-kib  (varsayılan: 2 x 64 MiB = 128 MiB)
     max-concurrent: 2
+
+# Velocity proxy arkasında çalışma (1.1.0, geliştirme sürümü). Kapalıyken tek sunucu modu.
+# Açıkken: oyuncu PIN'i yalnızca proxy'nin "auth" olarak işaretlediği sunucuda girer; diğer
+# sunucular proxy'nin imzalı onayını bekler, onay gelmezse oyuncuyu atar (fail-closed).
+# Gereken: Velocity modern forwarding (config/paper-global.yml proxies.velocity.enabled: true)
+# ve proxy'nin ürettiği plugins/nexuslogin/nexuslogin-sync.key dosyasının bu klasöre kopyası.
+velocity:
+  enabled: false
+  # Bu sunucunun velocity.toml [servers] altındaki adı, birebir aynı (ör. auth, lobby).
+  server-name: ""

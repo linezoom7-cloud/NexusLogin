@@ -5,5 +5,7 @@ public enum LoginKind {
     REGISTER,
     PREMIUM,
     REMEMBERED,
-    FORCED
+    FORCED,
+    /** Velocity arkasında: başka (auth) sunucuda doğrulandı, proxy imzalı AUTHED gönderdi. */
+    PROXY
 }

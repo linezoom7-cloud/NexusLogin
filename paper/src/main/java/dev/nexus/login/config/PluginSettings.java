@@ -16,7 +16,8 @@ public record PluginSettings(
         AuthSettings auth,
         PackSettings pack,
         AuditSettings audit,
-        BrandingSettings branding
+        BrandingSettings branding,
+        VelocityBridgeSettings velocity
 ) {
 
     public PluginSettings {
@@ -26,6 +27,7 @@ public record PluginSettings(
         Objects.requireNonNull(pack, "pack");
         Objects.requireNonNull(audit, "audit");
         Objects.requireNonNull(branding, "branding");
+        Objects.requireNonNull(velocity, "velocity");
     }
 
     /**
@@ -39,7 +41,8 @@ public record PluginSettings(
                 PackSettings.from(section(config, "resource-pack")),
                 // Eski config dosyalarında bu bölümler yok; varsayılanlarla devam et.
                 AuditSettings.from(config.getConfigurationSection("security.audit")),
-                BrandingSettings.from(config.getConfigurationSection("branding"))
+                BrandingSettings.from(config.getConfigurationSection("branding")),
+                VelocityBridgeSettings.from(config.getConfigurationSection("velocity"))
         );
     }
 

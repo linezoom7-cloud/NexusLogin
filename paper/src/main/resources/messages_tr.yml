@@ -162,6 +162,18 @@ kick:
     <muted>Bir yetkili hesabını sildi.</muted>
     <glow>Tekrar bağlanıp yeni bir PIN belirleyebilirsin.</glow>
 
+  proxy-sync: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>PROXY EŞİTLEMESİ BAŞARISIZ</bold></gradient>
+
+    <muted>Bu sunucu giriş durumunu proxy'den alamadı.</muted>
+    <glow>Yeniden bağlan. Sürerse bir yöneticiye haber ver.</glow>
+
+  proxy-expired: |-
+    <neon>✦</neon> <glow><bold>GİRİŞ OTURUMU SONA ERDİ</bold></glow>
+
+    <muted>Proxy girişini onaylamayı bıraktı.</muted>
+    <glow>Yeniden bağlan.</glow>
+
   internal: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>BEKLENMEYEN BİR HATA OLUŞTU</bold></gradient>
 

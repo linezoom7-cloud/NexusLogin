@@ -113,6 +113,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
         effects = new AuthEffects(this, messages);
         auth = new AuthService(this, accounts, hasher, executors, sessions, throttle, audit, effects, messages,
                 pack, settings.auth());
+        startProxyBridge(settings);
 
         // Dinleyiciler HEMEN kaydedilir: hazırlık sürerken bile kısıtlamalar devrede olmalı.
         PluginManager pm = getServer().getPluginManager();
@@ -222,6 +223,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 || !previous.hashing().equals(updated.hashing())
                 || !previous.pack().equals(updated.pack())
                 || !previous.audit().equals(updated.audit())
+                || !previous.velocity().equals(updated.velocity())
                 // Menü/mesaj markası canlı uygulanır; kaynak paketinin GÖRSELİ ise açılışta
                 // üretildiği için tam etki ancak yeniden başlatmayla alınır.
                 || !previous.branding().equals(updated.branding());
@@ -285,6 +287,39 @@ public final class NexusLoginPlugin extends JavaPlugin {
             getLogger().warning("security.argon2.pepper boş: veritabanı sızarsa PIN hash'leri pepper "
                     + "olmadan çevrimdışı kırılabilir. En az 16 karakterlik rastgele bir değer ayarlayın.");
         }
+    }
+
+    /**
+     * velocity.enabled ise köprüyü kurar. Ön koşullardan biri eksikse köprü kurulmaz ve eklenti tek
+     * sunucu modunda yerel PIN ile çalışır (her sunucu kendi doğrulamasını yapar: güvenli taraf).
+     */
+    private void startProxyBridge(PluginSettings settings) {
+        if (!settings.velocity().enabled()) {
+            return;
+        }
+        java.util.List<String> problems = new java.util.ArrayList<>(
+                // config/ ve spigot.yml sunucunun çalışma klasörüne göre çözülür.
+                dev.nexus.login.proxy.ProxyAudit.problems(java.nio.file.Path.of("").toAbsolutePath()));
+        dev.nexus.login.sync.SyncKeys keys = null;
+        java.nio.file.Path keyFile = getDataFolder().toPath().resolve("nexuslogin-sync.key");
+        try {
+            keys = dev.nexus.login.sync.SyncKeys.parse(java.nio.file.Files.readString(keyFile));
+        } catch (java.io.IOException e) {
+            problems.add(keyFile + " okunamadı (proxy'deki plugins/nexuslogin/nexuslogin-sync.key dosyasını kopyalayın)");
+        } catch (IllegalArgumentException e) {
+            problems.add(keyFile + " geçersiz: " + e.getMessage());
+        }
+        if (!problems.isEmpty()) {
+            getLogger().severe("velocity.enabled=true ama köprü AÇILMADI, tek sunucu modunda (yerel PIN) devam ediliyor:");
+            problems.forEach(p -> getLogger().severe(" - " + p));
+            return;
+        }
+        var inbound = new dev.nexus.login.proxy.ProxyInbound(keys, settings.velocity().serverName(),
+                new dev.nexus.login.sync.ReplayGuard());
+        var bridge = new dev.nexus.login.proxy.ProxyBridge(this, inbound, auth);
+        bridge.register();
+        auth.proxyLink(bridge);
+        getLogger().info("Velocity köprüsü aktif (sunucu adı: " + settings.velocity().serverName() + ").");
     }
 
     /** Paket hatası eklentiyi durdurmaz: menü cam panelli yedek tasarımla çalışmaya devam eder. */

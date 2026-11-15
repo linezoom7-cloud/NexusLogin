@@ -163,6 +163,18 @@ kick:
     <muted>An administrator unregistered this account.</muted>
     <glow>Reconnect to set a new PIN.</glow>
 
+  proxy-sync: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>PROXY SYNC FAILED</bold></gradient>
+
+    <muted>This server did not receive your login state from the proxy.</muted>
+    <glow>Please reconnect. If it keeps happening, contact an administrator.</glow>
+
+  proxy-expired: |-
+    <neon>✦</neon> <glow><bold>LOGIN SESSION EXPIRED</bold></glow>
+
+    <muted>The proxy stopped confirming your login.</muted>
+    <glow>Please reconnect.</glow>
+
   internal: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>AN UNEXPECTED ERROR OCCURRED</bold></gradient>
 

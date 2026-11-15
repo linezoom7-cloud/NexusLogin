@@ -10,6 +10,8 @@ import dev.nexus.login.menu.PinLayout;
 import dev.nexus.login.menu.PinMenu;
 import dev.nexus.login.menu.PinMenuMode;
 import dev.nexus.login.pack.PackService;
+import dev.nexus.login.proxy.ProxyContext;
+import dev.nexus.login.proxy.ProxyLink;
 import dev.nexus.login.security.PasswordHasher;
 import dev.nexus.login.security.VerificationResult;
 import dev.nexus.login.ui.AuthEffects;
@@ -78,6 +80,10 @@ public final class AuthService {
     private volatile AuthSettings settings;
     private volatile PinPolicy pinPolicy;
     private volatile boolean premiumActive;
+    /** Velocity modu: proxy bağlantısı; tek sunucu modunda null. */
+    private volatile @Nullable ProxyLink proxy;
+    /** Proxy her bağlantıda STATE gönderir; bu süre içinde gelmezse oyuncu atılır (fail-closed). */
+    private static final long PROXY_STATE_WAIT_TICKS = 20L * 5;
 
     private @Nullable BukkitTask ticker;
     private int frame;
@@ -109,6 +115,11 @@ public final class AuthService {
         return premiumActive;
     }
 
+    /** Velocity modunu açar; yalnızca açılışta, oyuncular girmeden önce çağrılır. */
+    public void proxyLink(ProxyLink link) {
+        this.proxy = link;
+    }
+
     /**
      * {@code /nexus reload} sonrası giriş kurallarını canlı uygular. Var olan oturumların
      * başlangıç zamanı değişmez (timeout geriye dönük uygulanmaz); yeni menüler ve yeni
@@ -135,7 +146,17 @@ public final class AuthService {
     private void tick() {
         frame++;
         Instant now = Instant.now();
+        long nowMs = System.currentTimeMillis();
         for (AuthSession session : sessions.all()) {
+            // Proxy heartbeat'i kesildi (proxy çöktü, anahtar değişti): doğrulama süresi doldu, at.
+            if (session.proxyExpiresAt() > 0 && nowMs > session.proxyExpiresAt()) {
+                Player expired = Bukkit.getPlayer(session.uuid());
+                if (expired != null) {
+                    logger.warning(() -> "Proxy onayının süresi doldu (heartbeat gelmedi): " + expired.getName());
+                    kick(expired, "kick.proxy-expired");
+                }
+                continue;
+            }
             if (!session.isRestricted()) {
                 continue;
             }
@@ -226,6 +247,18 @@ public final class AuthService {
         }
         player.updateCommands();
 
+        if (proxy != null) {
+            // Proxy'nin imzalı STATE'i gelmezse (proxy eklentisi yok, anahtar/ad uyuşmuyor) oyuncu kilitli
+            // bekletilmez, atılır.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (isCurrent(player, session) && session.proxyContext() == null) {
+                    logger.warning(() -> "Proxy durumu gelmedi: " + player.getName()
+                            + " (Velocity'de NexusLogin kurulu mu, server-name/anahtar aynı mı?)");
+                    kick(player, "kick.proxy-sync");
+                }
+            }, PROXY_STATE_WAIT_TICKS);
+        }
+
         Optional<SessionManager.Preloaded> preloaded = sessions.takePreloaded(player.getUniqueId());
         if (preloaded.isPresent()) {
             onAccountLoaded(player, session, preloaded.get().account());
@@ -252,8 +285,56 @@ public final class AuthService {
         if (session.state() == AuthState.AUTHENTICATED) {
             return;
         }
+        if (proxy != null && session.proxyContext() == null) {
+            // PIN menüsü yalnızca proxy "bu sunucuda doğrula" (PENDING) derse açılır.
+            session.awaitingProxy(true);
+            return;
+        }
+        startLocalAuth(player, session, account);
+    }
 
-        if (premiumActive) {
+    /**
+     * Velocity'den gelen doğrulanmış durum (ana thread). AUTHED: başka sunucuda doğrulanmış, kilidi aç.
+     * PENDING: bu sunucu auth sunucusu, PIN akışını başlat.
+     */
+    public void onProxyState(Player player, ProxyContext context) {
+        AuthSession session = sessions.get(player.getUniqueId());
+        if (proxy == null || session == null) {
+            return;
+        }
+        switch (context.state()) {
+            case AUTHED -> {
+                if (context.expiresAtMs() <= System.currentTimeMillis()) {
+                    return;
+                }
+                session.proxyContext(context);
+                session.proxyExpiresAt(context.expiresAtMs());
+                if (session.isRestricted()) {
+                    session.awaitingProxy(false);
+                    completeLogin(player, session, LoginKind.PROXY);
+                }
+            }
+            case PENDING -> {
+                if (session.state() == AuthState.AUTHENTICATED) {
+                    return;
+                }
+                session.proxyContext(context);
+                if (session.awaitingProxy()) {
+                    session.awaitingProxy(false);
+                    startLocalAuth(player, session, session.account());
+                }
+            }
+            case PENDING_2FA -> {
+                // 1.2.0 (TOTP) için ayrıldı; şimdilik kilitli kalır.
+            }
+        }
+    }
+
+    private void startLocalAuth(Player player, AuthSession session, @Nullable Account account) {
+        ProxyContext context = session.proxyContext();
+        // Proxy arkasında backend offline-mode'dadır; premium bilgisi yalnızca proxy'nin imzalı ipucudur.
+        boolean premium = context != null ? settings.premiumAutoLogin() && context.premium() : premiumActive;
+        if (premium) {
             premiumLogin(player, session);
             return;
         }
@@ -378,6 +459,7 @@ public final class AuthService {
             return;
         }
         detachUi(player, session);
+        forgetProxy(session);
         // Oyuncu verisi çıkışta diske yazılır: sonsuz körlük efekti kalıcı olmasın, eşyalar ve konum korunsun.
         effects.clearRestrictions(player, session.restrictionSnapshot());
         restorePlayerState(player, session);
@@ -733,16 +815,29 @@ public final class AuthService {
         restorePlayerState(player, session);
         player.updateCommands();
         Bukkit.broadcast(messages.get("chat.join", Placeholder.unparsed("player", player.getName())));
+        audit.loginSuccess(player.getName(), session.uuid(), session.ip(), kind.name());
+        if (kind == LoginKind.PROXY) {
+            // Doğrulama auth sunucusunda yapıldı (sayaç orada sıfırlandı, son giriş orada yazıldı).
+            logger.info(() -> player.getName() + " proxy onayıyla girdi.");
+            return;
+        }
+
+        // Bu sunucu auth sunucusu: proxy'ye imzalı onay. Proxy yalnızca güncel bağlantı/epoch'u kabul eder.
+        ProxyLink link = proxy;
+        ProxyContext context = session.proxyContext();
+        if (link != null && context != null && context.state() == dev.nexus.login.sync.StatePayload.AuthState.PENDING) {
+            link.sendAuthOk(player, context);
+        }
 
         // Başarı kanıtlandı: yalnızca hesabın hatalı deneme bütçesi sıfırlanır.
         throttle.resetAccount(session.uuid());
-        audit.loginSuccess(player.getName(), session.uuid(), session.ip(), kind.name());
 
         switch (kind) {
             case PREMIUM -> effects.premium(player);
             case REGISTER -> effects.success(player, "title.registered-sub");
             case REMEMBERED -> effects.success(player, "title.remembered-sub");
             case PIN, FORCED -> effects.success(player, "title.success-sub");
+            case PROXY -> { }
         }
 
         // Premium dahil her giriş türünde ad/IP güncellenir; premium hesap artık create
@@ -975,8 +1070,17 @@ public final class AuthService {
             detachUi(player, session);
             effects.clearRestrictions(player, session.restrictionSnapshot());
             restorePlayerState(player, session);
+            forgetProxy(session);
         }
         player.kick(messages.kick(key, placeholders));
+    }
+
+    private void forgetProxy(AuthSession session) {
+        ProxyLink link = proxy;
+        ProxyContext context = session.proxyContext();
+        if (link != null && context != null) {
+            link.forget(context);
+        }
     }
 
     private boolean isCurrent(Player player, AuthSession session) {

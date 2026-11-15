@@ -7,6 +7,7 @@ import com.velocitypowered.api.event.command.CommandExecuteEvent;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
+import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.event.player.PlayerChooseInitialServerEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.player.ServerPreConnectEvent;
@@ -156,6 +157,21 @@ public final class NexusLoginVelocity {
                 player.sendMessage(Component.text(settings.denyMessage()));
             }
         }
+    }
+
+    /**
+     * Doğrulanmamış oyuncu auth sunucusundan atıldıysa (kilit, zaman aşımı, yanlış isim) yedek sunucuya
+     * geçilmez ve oyuncu auth sunucusunun KENDİ mesajını görür. Aksi halde Velocity "try" listesindeki
+     * sonraki sunucuyu dener, kapı bunu reddeder ve oyuncu gerçek sebebi göremezdi.
+     */
+    @Subscribe(priority = Short.MIN_VALUE)
+    public void onKicked(KickedFromServerEvent event) {
+        if (ready() && states.isAuthed(event.getPlayer().getUniqueId())) {
+            return;
+        }
+        Component reason = event.getServerKickReason()
+                .orElse(Component.text(settings == null ? "Login server is not available." : settings.kickNoAuthServer()));
+        event.setResult(KickedFromServerEvent.DisconnectPlayer.create(reason));
     }
 
     @Subscribe

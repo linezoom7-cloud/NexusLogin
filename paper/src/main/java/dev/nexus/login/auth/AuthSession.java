@@ -38,6 +38,12 @@ public final class AuthSession {
     private @Nullable Location originalLocation;
     private ItemStack @Nullable [] storedInventory;
     private @Nullable AuthEffects.Snapshot restrictionSnapshot;
+    /** Proxy modunda son doğrulanmış STATE; AUTH_OK bunun connId/epoch'u ile gönderilir. */
+    private dev.nexus.login.proxy.@Nullable ProxyContext proxyContext;
+    /** Hesap yüklendi, akış proxy'nin STATE'ini bekliyor. */
+    private boolean awaitingProxy;
+    /** AUTHED'in proxy saatine göre son geçerliliği (ms); 0 = proxy modu dışı veya henüz yok. */
+    private long proxyExpiresAt;
 
     AuthSession(UUID uuid, String ip, Duration timeout) {
         this.uuid = uuid;
@@ -137,6 +143,30 @@ public final class AuthSession {
 
     void restrictionSnapshot(@Nullable AuthEffects.Snapshot snapshot) {
         this.restrictionSnapshot = snapshot;
+    }
+
+    dev.nexus.login.proxy.@Nullable ProxyContext proxyContext() {
+        return proxyContext;
+    }
+
+    void proxyContext(dev.nexus.login.proxy.@Nullable ProxyContext context) {
+        this.proxyContext = context;
+    }
+
+    boolean awaitingProxy() {
+        return awaitingProxy;
+    }
+
+    void awaitingProxy(boolean value) {
+        this.awaitingProxy = value;
+    }
+
+    long proxyExpiresAt() {
+        return proxyExpiresAt;
+    }
+
+    void proxyExpiresAt(long value) {
+        this.proxyExpiresAt = value;
     }
 
     public boolean isExpired(Instant now) {
