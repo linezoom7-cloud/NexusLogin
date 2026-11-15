@@ -141,7 +141,7 @@ The PIN gate can only be as strong as the identity data it receives:
 - **Online-mode name reuse:** when a player takes a name that an older account still holds, the old row is renamed to `#<uuid-prefix>`; it gets its real name back on that player's next login.
 
 - **Audit log on crash:** `nexus-auth.log` is written by a background thread and flushed per line. A hard crash (power loss, `kill -9`) can lose the few lines still queued; a normal stop drains the queue.
-- **MariaDB pre-migration backup:** the SQLite backup is covered by tests; the MariaDB backup table (`nexus_accounts_backup_v<N>`) is created with `LIKE` + `INSERT IGNORE` but has not been run against a real MariaDB server by the maintainers. Take your own dump before upgrading a MariaDB database.
+- **MariaDB migrations are not transactional:** MariaDB commits implicitly on `CREATE INDEX`/`ALTER TABLE`, so a failed schema upgrade cannot be rolled back. NexusLogin first copies `nexus_accounts` into `nexus_accounts_backup_v<N>` (keys and indexes kept; tested on MariaDB 11.4). Still take your own dump before upgrading a production database.
 
 ### Upgrade notes
 

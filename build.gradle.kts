@@ -58,6 +58,8 @@ dependencies {
     // Gerçek SQLite üzerinde şema/migration entegrasyon testleri için.
     testImplementation("com.zaxxer:HikariCP:$hikariVersion")
     testImplementation("org.xerial:sqlite-jdbc:3.47.1.0")
+    // Yalnızca NEXUS_TEST_MARIADB_PASSWORD verildiğinde çalışan gerçek MariaDB testleri için.
+    testImplementation("org.mariadb.jdbc:mariadb-java-client:$mariadbVersion")
 }
 
 tasks {
