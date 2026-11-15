@@ -10,6 +10,7 @@ import dev.nexus.login.ui.Messages;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -53,6 +54,12 @@ public final class ConnectionListener implements Listener {
         this.messages = messages;
         this.audit = audit;
         this.logger = logger;
+        try {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                onlineNames.add(player.getName().toLowerCase(java.util.Locale.ROOT));
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     /**
