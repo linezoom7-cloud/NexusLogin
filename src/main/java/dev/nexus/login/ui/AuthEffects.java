@@ -211,17 +211,18 @@ public final class AuthEffects {
     private void portalRing(Player player, int frame) {
         Color[] colors = ringColors;
         Location base = player.getLocation();
-        World world = player.getWorld();
         double angle = frame * 0.22;
         double height = 0.15 + (Math.sin(frame * 0.08) + 1) * 0.9;
+        // Yalnızca bekleyen oyuncuya gönderilir: world.spawnParticle yakındaki herkese gider ve
+        // spawn'da toplanan N bekleyen oyuncu N*N paket üretirdi (bot akınında sunucuyu kilitler).
         for (int i = 0; i < colors.length; i++) {
             double a = angle + i * (Math.PI * 2 / colors.length);
             Location point = base.clone().add(Math.cos(a) * 0.85, height, Math.sin(a) * 0.85);
-            world.spawnParticle(Particle.DUST, point, 1, 0, 0, 0, 0,
+            player.spawnParticle(Particle.DUST, point, 1, 0, 0, 0, 0,
                     new Particle.DustOptions(colors[i], 1.1f));
         }
         if (frame % 6 == 0) {
-            world.spawnParticle(Particle.PORTAL, base.clone().add(0, 0.9, 0), 6, 0.3, 0.5, 0.3, 0.4);
+            player.spawnParticle(Particle.PORTAL, base.clone().add(0, 0.9, 0), 6, 0.3, 0.5, 0.3, 0.4);
         }
     }
 

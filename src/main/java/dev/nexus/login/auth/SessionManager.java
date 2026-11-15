@@ -81,6 +81,9 @@ public final class SessionManager {
     // ── ön-yükleme ──
 
     public void preload(UUID uuid, @Nullable Account account) {
+        // Yeni bağlantı join'den önce buradan geçer: "çıkıyor" işareti kalırsa, begin() oturum
+        // açmadan erken çıktığında (ör. bozuk envanter yedeği) oyuncu kısıtsız kalırdı.
+        leaving.remove(uuid);
         preloaded.put(uuid, new Preloaded(account, Instant.now()));
     }
 

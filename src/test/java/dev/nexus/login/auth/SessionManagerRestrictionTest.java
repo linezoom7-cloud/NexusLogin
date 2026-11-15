@@ -44,6 +44,18 @@ class SessionManagerRestrictionTest {
     }
 
     @Test
+    void preLoginOfAReturningPlayerRestoresRestriction() {
+        SessionManager sessions = new SessionManager();
+        UUID id = UUID.randomUUID();
+        sessions.leaving(id);
+        assertFalse(sessions.isRestricted(player(id, false)));
+
+        sessions.preload(id, null); // yeni bağlantının pre-login'i
+        assertTrue(sessions.isRestricted(player(id, false)),
+                "begin() oturum açmadan erken çıksa bile geri dönen oyuncu kısıtlı olmalı");
+    }
+
+    @Test
     void leavingPlayerIsNotRestrictedUntilHeJoinsAgain() {
         SessionManager sessions = new SessionManager();
         UUID id = UUID.randomUUID();

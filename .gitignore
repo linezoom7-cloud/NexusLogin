@@ -30,3 +30,7 @@ cache/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# Research output (local only)
+/research_notes/
+/reports/

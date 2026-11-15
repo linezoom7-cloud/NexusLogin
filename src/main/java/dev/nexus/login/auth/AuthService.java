@@ -941,21 +941,28 @@ public final class AuthService {
             logger.log(Level.SEVERE, "Envanter yedeği geri yüklenemedi: " + player.getName(), e);
             return false;
         }
-        try {
-            Files.deleteIfExists(file);
-        } catch (IOException e) {
-            // Envanter zaten geri verildi; dosya bir sonraki açılışta tekrar okunur
-            // (aynı içerik, veri kaybı yok).
-            logger.log(Level.WARNING, "Envanter yedek dosyası silinemedi: " + player.getName(), e);
-        }
+        // Envanter geri verildi; dosya kalırsa bir sonraki girişte eski eşyalar tekrar yazılırdı.
+        deleteInventoryBackup(player);
         return true;
     }
 
+    /**
+     * Yedeği siler. Silme başarısız olursa (Windows'ta dosya kilitli, OneDrive/antivirüs tarıyor)
+     * dosya BOŞALTILIR: eski dosya kalsaydı bir sonraki girişte, oyuncunun o arada değişen
+     * envanterinin üstüne yazılır ve eşyalar geri sarardı. Boş dosyada geri yüklenecek bir şey yok.
+     */
     private void deleteInventoryBackup(Player player) {
+        Path file = inventoryBackupFile(player);
         try {
-            Files.deleteIfExists(inventoryBackupFile(player));
+            Files.deleteIfExists(file);
         } catch (IOException e) {
-            logger.log(Level.WARNING, "Envanter yedek dosyası silinemedi: " + player.getName(), e);
+            logger.log(Level.WARNING, "Envanter yedek dosyası silinemedi, boşaltılıyor: " + player.getName(), e);
+            try {
+                Files.write(file, new byte[0]);
+            } catch (IOException truncateError) {
+                logger.log(Level.SEVERE, "Envanter yedek dosyası silinemedi ve boşaltılamadı; "
+                        + file + " dosyasını elle silin: " + player.getName(), truncateError);
+            }
         }
     }
 
