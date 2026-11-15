@@ -81,7 +81,8 @@ public final class ConnectionListener implements Listener {
      * Paper bu eventi kendi asenkron thread'inde çalıştırır; burada bloklamak (get) ana
      * thread'i ETKİLEMEZ. Hesap burada önceden yüklenir, join anında DB beklenmez.
      */
-    @EventHandler(priority = EventPriority.LOW)
+    /** HIGHEST: daha sonra çalışan bir eklenti, kilitli hesabın reddini allow() ile geri açamasın. */
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
             return;

@@ -37,7 +37,11 @@ public final class SessionManager {
      */
     private final Set<UUID> rememberBlocked = ConcurrentHashMap.newKeySet();
 
+    /** Çıkış yapmış oyuncular; yeniden girişte ve periyodik temizlikte silinir. */
+    private final Set<UUID> leaving = ConcurrentHashMap.newKeySet();
+
     AuthSession create(UUID uuid, String ip, Duration timeout) {
+        leaving.remove(uuid);
         AuthSession session = new AuthSession(uuid, ip, timeout);
         sessions.put(uuid, session);
         return session;
@@ -56,11 +60,22 @@ public final class SessionManager {
     }
 
     /**
-     * Oturumu olmayan oyuncular (ör. NPC eklentilerinin sahte Player nesneleri) kısıtlanmaz.
+     * Fail-closed: oturumu olmayan gerçek oyuncu kısıtlıdır (ör. /reload sonrası veritabanı
+     * hazır olana kadar). Yalnızca NPC eklentilerinin sahte Player nesneleri muaftır.
      */
     public boolean isRestricted(Player player) {
         AuthSession session = sessions.get(player.getUniqueId());
-        return session != null && session.isRestricted();
+        if (session != null) {
+            return session.isRestricted();
+        }
+        // Citizens ve benzerleri NPC'lerini "NPC" metadata'sıyla işaretler. Çıkış yapan oyuncuya
+        // dokunan başka eklentiler (savaştan kaçanı cezalandıran, konum kaydeden) engellenmesin.
+        return !leaving.contains(player.getUniqueId()) && !player.hasMetadata("NPC");
+    }
+
+    /** Oyuncu çıkıyor: oturumu silinmiş olsa da kısa süre kısıtlı sayılmaz. */
+    void leaving(UUID uuid) {
+        leaving.add(uuid);
     }
 
     // ── ön-yükleme ──
@@ -77,6 +92,7 @@ public final class SessionManager {
     void purgeStalePreloads() {
         Instant limit = Instant.now().minus(PRELOAD_TTL);
         preloaded.values().removeIf(p -> p.loadedAt().isBefore(limit));
+        leaving.clear();
         Instant now = Instant.now();
         remembered.values().removeIf(r -> now.isAfter(r.expiresAt()));
         if (rememberBlocked.size() > 5_000) {

@@ -82,7 +82,7 @@ auth:
   # Varsayılan bu yüzden 0'dır; yalnızca güvenilir bir ağda ve kısa süreyle açın.
   session-remember-minutes: 0
   # Giriş yapana kadar oyuncuyu güvenli dünya spawn noktasına ışınla.
-  teleport-to-spawn: false
+  teleport-to-spawn: true
   # Başarılı giriş sonrası oyuncuyu oyundan çıktığı eski konumuna geri döndür.
   restore-previous-location: true
   # Giriş yapana kadar envanterdeki eşyaları geçici olarak gizle.

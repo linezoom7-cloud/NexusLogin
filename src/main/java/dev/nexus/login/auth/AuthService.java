@@ -219,6 +219,8 @@ public final class AuthService {
                 logger.warning(() -> "Envanter gizlenemedi (yedek yazılamadı): " + player.getName());
             }
         }
+        // Araçtaki (tekne, vagon, at) oyuncu araçla birlikte hareket edip kısıtı delebilir.
+        player.leaveVehicle();
         if (settings.teleportToSpawn()) {
             RestrictionListener.performInternalTeleport(player, player.getWorld().getSpawnLocation());
         }
@@ -370,6 +372,7 @@ public final class AuthService {
 
     public void onQuit(Player player) {
         pack.forget(player.getUniqueId());
+        sessions.leaving(player.getUniqueId());
         AuthSession session = sessions.remove(player.getUniqueId());
         if (session == null) {
             return;

@@ -75,7 +75,7 @@ public record AuthSettings(
                 // İkinci faktörü kaldırdığı için varsayılan kapalı; çalınmış bir Mojang
                 // oturumu aksi halde doğrudan erişim demek olurdu.
                 s.getBoolean("premium-auto-login", false),
-                s.getBoolean("teleport-to-spawn", false),
+                s.getBoolean("teleport-to-spawn", true),
                 s.getBoolean("restore-previous-location", true),
                 s.getBoolean("hide-inventory", true),
                 ThrottleSettings.from(s)

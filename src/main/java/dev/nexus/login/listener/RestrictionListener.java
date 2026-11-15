@@ -4,6 +4,9 @@ import dev.nexus.login.auth.SessionManager;
 import dev.nexus.login.menu.PinMenu;
 import dev.nexus.login.ui.Messages;
 import io.papermc.paper.event.player.AsyncChatEvent;
+import org.bukkit.Bukkit;
+import org.bukkit.command.Command;
+import org.bukkit.command.PluginIdentifiableCommand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -416,9 +419,27 @@ public final class RestrictionListener implements Listener {
         if (!restricted(event.getPlayer())) {
             return;
         }
-        if (!isAllowed(allowedCommands, label(event.getMessage()))) {
+        String label = label(event.getMessage());
+        if (!isAllowed(allowedCommands, label) || foreignGate(label)) {
             deny(event.getPlayer(), event);
         }
+    }
+
+    /**
+     * giris/login/l başka bir eklentiye aitse (ör. lobi eklentisinin /l komutu, başka bir auth
+     * eklentisinin /login'i) giriş yapmamış oyuncu onu çalıştıramaz. Bilinmeyen komut zararsızdır.
+     */
+    private static boolean foreignGate(String label) {
+        if (!GATE_COMMANDS.contains(label.substring(label.indexOf(':') + 1))) {
+            return false;
+        }
+        Command command = Bukkit.getCommandMap().getCommand(label);
+        return command != null && !ownedByUs(command);
+    }
+
+    static boolean ownedByUs(Command command) {
+        return command instanceof PluginIdentifiableCommand owned
+                && OWN_NAMESPACE.equalsIgnoreCase(owned.getPlugin().getName());
     }
 
     /** Tab ile komut listesini görmesin; girişten sonra {@code player.updateCommands()} listeyi yeniler. */
@@ -426,7 +447,10 @@ public final class RestrictionListener implements Listener {
     public void onCommandList(PlayerCommandSendEvent event) {
         if (restricted(event.getPlayer())) {
             Set<String> allowed = allowedCommands;
-            event.getCommands().removeIf(command -> !isAllowed(allowed, normalize(command)));
+            event.getCommands().removeIf(command -> {
+                String label = normalize(command);
+                return !isAllowed(allowed, label) || foreignGate(label);
+            });
         }
     }
 
