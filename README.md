@@ -43,10 +43,10 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 ```powershell
 .\gradlew.bat build
 ```
-Output: `build/libs/NexusLogin-1.0.1.jar`
+Output: `build/libs/NexusLogin-1.0.2.jar`
 
 ### Installation
-1. Drop `NexusLogin-1.0.1.jar` into your server's `plugins/` folder.
+1. Drop `NexusLogin-1.0.2.jar` into your server's `plugins/` folder.
 2. Start the server! Paper will automatically download the required libraries (`HikariCP`, `Argon2-jvm`, `MariaDB Connector/J`) on first boot.
 3. Nothing else — the resource pack is served over the Minecraft port (`resource-pack.delivery: same-port`). On shared hosting (Pterodactyl / Aternos-like panels) **do not** open port `8164`; it is not needed.
 4. The generated ZIP is also written to `plugins/NexusLogin/pack/nexus-pack.zip`, so you can upload it to any static host if needed.
