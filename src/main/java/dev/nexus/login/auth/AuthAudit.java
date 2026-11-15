@@ -13,6 +13,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -20,9 +24,8 @@ import java.util.logging.Logger;
 /**
  * Giriş güvenliği denetim günlüğü: {@code plugins/NexusLogin/nexus-auth.log}.
  *
- * <p>Satırlar tek tek, hemen diske yazılır (flush). Hacim düşüktür (yalnızca giriş
- * olayları ve yönetici işlemleri), bu yüzden ana thread'de kısa bir dosya yazımı
- * kabul edilebilir. Günlük açılamazsa olaylar yalnızca sunucu konsoluna düşer;
+ * <p>Satırlar tek bir arka plan thread'inde sırayla yazılır ve her satırdan sonra flush edilir.
+ * Günlük açılamazsa olaylar yalnızca sunucu konsoluna düşer;
  * giriş akışı asla bu yüzden durmaz.
  *
  * <p>Dosya {@link AuditSettings#maxSizeBytes()} sınırına ulaştığında döndürülür:
@@ -38,6 +41,12 @@ public final class AuthAudit implements AutoCloseable {
     private final Logger logger;
     private final Clock clock;
     private final ReentrantLock lock = new ReentrantLock();
+    private final ThreadPoolExecutor io = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(5_000), r -> {
+                Thread t = new Thread(r, "NexusLogin-audit");
+                t.setDaemon(true);
+                return t;
+            }, new ThreadPoolExecutor.CallerRunsPolicy());
 
     private final long maxBytes;
     private final int keepFiles;
@@ -125,6 +134,11 @@ public final class AuthAudit implements AutoCloseable {
 
     /** Testlerin dosyayı okurken yarım satır görmemesi için hemen diske indirir. */
     public void flush() {
+        try {
+            io.submit(() -> { }).get(5, TimeUnit.SECONDS); // kuyruktaki satırlar önce yazılsın
+        } catch (Exception ignored) {
+            // kapalı veya zaman aşımı: eldeki tampon yine de indirilir
+        }
         lock.lock();
         try {
             if (writer != null) {
@@ -139,6 +153,12 @@ public final class AuthAudit implements AutoCloseable {
 
     @Override
     public void close() {
+        io.shutdown();
+        try {
+            io.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         lock.lock();
         try {
             if (writer != null) {
@@ -155,6 +175,15 @@ public final class AuthAudit implements AutoCloseable {
     private void write(String event, String... fields) {
         String timestamp = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS).toString();
         String line = timestamp + "  " + event + "  " + String.join("  ", fields) + System.lineSeparator();
+        // Disk yazımı ana thread'i (komut, kick) bekletmesin; kuyruk dolarsa çağıran yazar (kayıp yok, geri basınç).
+        try {
+            io.execute(() -> writeNow(line));
+        } catch (RejectedExecutionException closed) {
+            writeNow(line);
+        }
+    }
+
+    private void writeNow(String line) {
         int incoming = line.getBytes(StandardCharsets.UTF_8).length;
 
         lock.lock();

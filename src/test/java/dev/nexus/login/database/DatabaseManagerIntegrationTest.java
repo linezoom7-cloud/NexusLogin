@@ -100,6 +100,25 @@ class DatabaseManagerIntegrationTest {
     }
 
     @Test
+    void releaseNameFreesTheNameForTheNewHolderAndDeleteRemovesTheRow() throws Exception {
+        manager = start("rename.db");
+        SqlAccountRepository accounts = new SqlAccountRepository(manager, DIRECT);
+        UUID oldHolder = UUID.randomUUID();
+        UUID newHolder = UUID.randomUUID();
+        accounts.create(oldHolder, "Steve", "hash1", false, "127.0.0.1").join();
+
+        assertEquals(1, accounts.releaseName("steve", newHolder).join(), "eski sahibin adı devredilmeli");
+        assertEquals(0, accounts.releaseName("steve", newHolder).join(), "ikinci çağrıda devredilecek satır kalmamalı");
+
+        accounts.create(newHolder, "Steve", "hash2", false, "127.0.0.1").join();
+        assertEquals("Steve", accounts.findByUuid(newHolder).join().orElseThrow().playerName());
+        assertTrue(accounts.findByUuid(oldHolder).join().isPresent(), "eski hesap silinmemeli, yalnız yeniden adlandırılmalı");
+
+        assertTrue(accounts.delete(newHolder).join());
+        assertTrue(accounts.findByUuid(newHolder).join().isEmpty());
+    }
+
+    @Test
     void migrationBackupIsAConsistentSnapshotWithTheOldRows() throws Exception {
         Path file = tempDir.resolve("plugin").resolve("legacy.db");
         createLegacyV1Database(file);
