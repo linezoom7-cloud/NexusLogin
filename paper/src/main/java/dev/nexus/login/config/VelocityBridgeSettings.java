@@ -4,9 +4,11 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * {@code velocity:} bölümü. Kapalıyken (varsayılan) eklenti tek sunucu modunda çalışır.
+ * {@code velocity:} bölümü. Kapalıyken (varsayılan) eklenti tek sunucu modunda
+ * çalışır.
  *
- * @param serverName bu sunucunun velocity.toml {@code [servers]} altındaki adı; imzaya girer,
+ * @param serverName bu sunucunun velocity.toml {@code [servers]} altındaki adı;
+ *                   imzaya girer,
  *                   proxy'deki adla birebir aynı olmalı
  */
 public record VelocityBridgeSettings(boolean enabled, String serverName) {

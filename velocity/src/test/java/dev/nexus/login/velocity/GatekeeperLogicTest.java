@@ -64,11 +64,32 @@ class GatekeeperLogicTest {
     @Test
     void unauthenticatedPlayerMayOnlyReachAuthServers() {
         Set<String> auth = Set.of("auth", "auth2");
-        assertTrue(GateRules.mayConnect(false, "auth", auth));
-        assertTrue(GateRules.mayConnect(false, "auth2", auth));
-        assertFalse(GateRules.mayConnect(false, "lobby", auth));
-        assertFalse(GateRules.mayConnect(false, "AUTH", auth), "sunucu adları büyük/küçük harfe duyarlı");
-        assertTrue(GateRules.mayConnect(true, "lobby", auth));
+        assertTrue(GateRules.mayConnect(false, "auth", auth, null));
+        assertTrue(GateRules.mayConnect(false, "auth2", auth, null));
+        assertFalse(GateRules.mayConnect(false, "lobby", auth, null));
+        assertFalse(GateRules.mayConnect(false, "AUTH", auth, null), "sunucu adları büyük/küçük harfe duyarlı");
+        assertTrue(GateRules.mayConnect(true, "lobby", auth, "auth"));
+    }
+
+    @Test
+    void unauthenticatedPlayerCannotHopBetweenAuthServers() {
+        Set<String> auth = Set.of("auth", "auth2");
+        assertFalse(GateRules.mayConnect(false, "auth2", auth, "auth"),
+                "auth sunucuları arasında gezinmek ayrı sayaçlarla deneme hakkını çoğaltırdı");
+        assertFalse(GateRules.mayConnect(false, "auth", auth, "auth"));
+        assertTrue(GateRules.mayConnect(true, "auth2", auth, "lobby"), "doğrulanmış oyuncu serbest");
+    }
+
+    @Test
+    void multipleAuthServersRequireSharedDatabaseAcknowledgement() {
+        Properties two = new Properties();
+        two.setProperty("auth-servers", "auth, auth2");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> ProxySettings.from(two));
+        assertTrue(e.getMessage().contains("auth-servers-share-database"));
+
+        two.setProperty("auth-servers-share-database", "true");
+        assertEquals(Set.of("auth", "auth2"), ProxySettings.from(two).authServers());
+        assertFalse(ProxySettings.from(new Properties()).authServersShareDatabase(), "varsayılan kapalı");
     }
 
     @Test

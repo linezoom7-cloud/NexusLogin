@@ -134,7 +134,8 @@ public final class NexusLoginVelocity {
         }
         Player player = event.getPlayer();
         boolean authed = ready() && states.isAuthed(player.getUniqueId());
-        if (!ready() || !GateRules.mayConnect(authed, target.get().getServerInfo().getName(), settings.authServers())) {
+        String current = player.getCurrentServer().map(s -> s.getServerInfo().getName()).orElse(null);
+        if (!ready() || !GateRules.mayConnect(authed, target.get().getServerInfo().getName(), settings.authServers(), current)) {
             event.setResult(ServerPreConnectEvent.ServerResult.denied());
             if (player.getCurrentServer().isEmpty()) {
                 player.disconnect(Component.text(settings == null ? "Login server is not available." : settings.kickNoAuthServer()));

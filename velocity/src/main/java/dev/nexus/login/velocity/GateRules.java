@@ -9,8 +9,16 @@ final class GateRules {
     private GateRules() {
     }
 
-    static boolean mayConnect(boolean authed, String target, Set<String> authServers) {
-        return authed || authServers.contains(target);
+    /**
+     * @param current oyuncunun şu an bulunduğu sunucu; ilk bağlantıda null
+     */
+    static boolean mayConnect(boolean authed, String target, Set<String> authServers, String current) {
+        if (authed) {
+            return true;
+        }
+        // Doğrulanmamış oyuncu yalnızca İLK yerleşimde auth sunucusuna gider; auth sunucuları arasında
+        // gezinmek her sunucunun ayrı hata sayacıyla deneme hakkını çoğaltırdı.
+        return current == null && authServers.contains(target);
     }
 
     /**

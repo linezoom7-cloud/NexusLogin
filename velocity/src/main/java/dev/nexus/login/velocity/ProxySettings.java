@@ -24,12 +24,17 @@ import java.util.stream.Collectors;
  * @param heartbeat        AUTHED push aralığı (ttl'den kısa olmalı)
  */
 public record ProxySettings(Set<String> authServers, String afterLoginServer, Set<String> allowedCommands,
-                            Duration authedTtl, Duration heartbeat, String kickNoAuthServer, String denyMessage) {
+                            Duration authedTtl, Duration heartbeat, String kickNoAuthServer, String denyMessage,
+                            boolean authServersShareDatabase) {
 
     static final String DEFAULTS = """
             # NexusLogin Velocity ayarları. Değişiklik için proxy'yi yeniden başlatın.
             # Doğrulanmamış oyuncunun bulunabileceği sunucular (velocity.toml [servers] adları, virgülle).
             auth-servers=auth
+            # Birden fazla auth sunucusu YALNIZCA hepsi aynı MariaDB'yi kullanıyorsa güvenlidir; ayrı
+            # veritabanında oyuncu bir auth sunucusu kapalıyken diğerinde başkasının adıyla yeni PIN
+            # kaydedebilir. Aynı veritabanını kullandığınızı onaylamak için true yapın.
+            auth-servers-share-database=false
             # Giriş sonrası gidilecek sunucu. Boş: velocity.toml 'try' listesindeki ilk auth dışı sunucu.
             after-login-server=
             # Girişten önce izin verilen komutlar (ilk kelime, büyük/küçük harf duyarsız, tam eşleşme).
@@ -47,6 +52,10 @@ public record ProxySettings(Set<String> authServers, String afterLoginServer, Se
         }
         if (heartbeat.isZero() || heartbeat.isNegative() || heartbeat.compareTo(authedTtl) >= 0) {
             throw new IllegalArgumentException("heartbeat-seconds, authed-ttl-seconds'tan küçük ve pozitif olmalı");
+        }
+        if (authServers.size() > 1 && !authServersShareDatabase) {
+            throw new IllegalArgumentException("auth-servers birden fazla sunucu içeriyor; hepsi AYNI MariaDB veritabanını"
+                    + " kullanmıyorsa hesap ele geçirilebilir. Aynı veritabanıysa auth-servers-share-database=true yapın.");
         }
         if (authServers.contains(afterLoginServer)) {
             throw new IllegalArgumentException("after-login-server bir auth sunucusu olamaz");
@@ -83,7 +92,8 @@ public record ProxySettings(Set<String> authServers, String afterLoginServer, Se
                 Duration.ofSeconds(Long.parseLong(get.apply("authed-ttl-seconds"))),
                 Duration.ofSeconds(Long.parseLong(get.apply("heartbeat-seconds"))),
                 get.apply("kick-no-auth-server"),
-                get.apply("deny-message"));
+                get.apply("deny-message"),
+                Boolean.parseBoolean(get.apply("auth-servers-share-database")));
     }
 
     private static Set<String> list(String value, boolean lowerCase) {
