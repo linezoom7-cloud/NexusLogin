@@ -100,6 +100,26 @@ class DatabaseManagerIntegrationTest {
     }
 
     @Test
+    void migrationBackupIsAConsistentSnapshotWithTheOldRows() throws Exception {
+        Path file = tempDir.resolve("plugin").resolve("legacy.db");
+        createLegacyV1Database(file);
+
+        manager = start("legacy.db");
+
+        Path backup;
+        try (var files = Files.list(file.getParent())) {
+            backup = files.filter(p -> p.getFileName().toString().startsWith("legacy.db.backup-v1-"))
+                    .findFirst().orElseThrow(() -> new AssertionError("yedek dosyası yok"));
+        }
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + backup);
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM nexus_accounts")) {
+            assertTrue(rows.next());
+            assertEquals(4, rows.getInt(1), "yedek, dedupe öncesi 4 satırın hepsini içermeli");
+        }
+    }
+
+    @Test
     void refusesToStartWhenDatabaseSchemaIsNewer() throws Exception {
         Path file = tempDir.resolve("plugin").resolve("future.db");
         createLegacyV1Database(file);

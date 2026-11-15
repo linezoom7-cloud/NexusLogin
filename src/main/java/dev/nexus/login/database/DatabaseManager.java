@@ -7,7 +7,6 @@ import dev.nexus.login.config.DatabaseSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -195,7 +194,10 @@ public final class DatabaseManager implements AutoCloseable {
                     if (Files.exists(dbFile)) {
                         Path backup = dbFile.resolveSibling(dbFile.getFileName().toString() + ".backup-v"
                                 + currentVersion + "-" + System.currentTimeMillis());
-                        Files.copy(dbFile, backup, StandardCopyOption.REPLACE_EXISTING);
+                        // Dosya kopyası WAL'daki henüz işlenmemiş yazmaları kaçırır; VACUUM INTO tutarlı anlık görüntü verir.
+                        try (Statement statement = connection.createStatement()) {
+                            statement.execute("VACUUM INTO '" + backup.toAbsolutePath().toString().replace("'", "''") + "'");
+                        }
                         logger.info(() -> "Şema güncellemesi öncesi SQLite yedeği alındı: " + backup.getFileName());
                     }
                 } catch (Exception e) {
@@ -204,8 +206,10 @@ public final class DatabaseManager implements AutoCloseable {
             }
             case MARIADB -> {
                 try (Statement statement = connection.createStatement()) {
-                    statement.execute("CREATE TABLE IF NOT EXISTS nexus_accounts_backup_v" + currentVersion
-                            + " AS SELECT * FROM nexus_accounts");
+                    // AS SELECT anahtarları/indeksleri kaybeder; LIKE yapıyı korur. IGNORE: yarım kalmış önceki denemeyi tamamlar.
+                    String table = "nexus_accounts_backup_v" + currentVersion;
+                    statement.execute("CREATE TABLE IF NOT EXISTS " + table + " LIKE nexus_accounts");
+                    statement.execute("INSERT IGNORE INTO " + table + " SELECT * FROM nexus_accounts");
                     logger.info(() -> "Şema güncellemesi öncesi MariaDB yedek tablosu oluşturuldu: nexus_accounts_backup_v"
                             + currentVersion);
                 } catch (Exception e) {

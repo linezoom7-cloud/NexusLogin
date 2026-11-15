@@ -32,6 +32,8 @@ import java.util.logging.Logger;
 public final class ConnectionListener implements Listener {
 
     private static final long DB_TIMEOUT_SECONDS = 10;
+    /** Aynı anda en fazla bu kadar pre-login veritabanı sorgusu (Hikari havuzu küçüktür). */
+    private static final java.util.concurrent.Semaphore DB_LOOKUPS = new java.util.concurrent.Semaphore(32);
 
     private final Supplier<CompletableFuture<Void>> ready;
     private final AccountRepository accounts;
@@ -81,7 +83,7 @@ public final class ConnectionListener implements Listener {
      * Paper bu eventi kendi asenkron thread'inde çalıştırır; burada bloklamak (get) ana
      * thread'i ETKİLEMEZ. Hesap burada önceden yüklenir, join anında DB beklenmez.
      */
-    /** HIGHEST: daha sonra çalışan bir eklenti, kilitli hesabın reddini allow() ile geri açamasın. */
+    // HIGHEST: MONITOR hariç sonradan çalışan eklentiler reddi allow() ile geri açamaz (ancak aynı öncelikte sıralama garanti değildir).
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
@@ -123,7 +125,15 @@ public final class ConnectionListener implements Listener {
             }
         }
 
+        // Bağlantı seli veritabanı havuzunu tüketmesin: sınırı aşan bağlantı bekletilmeden reddedilir.
+        boolean acquired = false;
         try {
+            acquired = DB_LOOKUPS.tryAcquire(2, TimeUnit.SECONDS);
+            if (!acquired) {
+                audit.preLoginDenied(name, event.getUniqueId(), ip, "overloaded");
+                disallow(event, "kick.database");
+                return;
+            }
             Optional<Account> byUuid = accounts.findByUuid(event.getUniqueId()).get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             // Sadece offline-mode'da isim kontrolü yapılır. Online-mode'da isim değiştiren oyuncuların
             // eski isimlerini başkası aldığında UUID tek kaynak olduğu için yanlış engelleme yapılmaz.
@@ -136,7 +146,8 @@ public final class ConnectionListener implements Listener {
                     return;
                 }
             }
-            if (Bukkit.getOnlineMode()) {
+            // Kayıtlı isim zaten aynıysa devredilecek başka satır olamaz (unique indeks): sorguyu atla.
+            if (Bukkit.getOnlineMode() && !byUuid.map(a -> a.playerName().equalsIgnoreCase(name)).orElse(false)) {
                 // Mojang ismi doğruladı: aynı ismi tutan başka UUID'li satır, ismini değiştirmiş
                 // eski bir oyuncuya aittir. Serbest bırakılmazsa unique isim indeksi bu oyuncunun
                 // kaydını ve son giriş güncellemesini kalıcı olarak başarısız kılardı.
@@ -155,6 +166,10 @@ public final class ConnectionListener implements Listener {
             logger.log(Level.SEVERE, "Pre-login hesap sorgusu başarısız: " + name, e);
             audit.preLoginDenied(name, event.getUniqueId(), ip, "database");
             disallow(event, "kick.database");
+        } finally {
+            if (acquired) {
+                DB_LOOKUPS.release();
+            }
         }
     }
 
@@ -169,11 +184,10 @@ public final class ConnectionListener implements Listener {
         auth.begin(event.getPlayer());
     }
 
-    /** Vanilla "joined the game" yerine Nexus temalı duyuru. */
+    /** Giriş duyurusu doğrulamadan sonra AuthService'ten yapılır: bot akını sohbeti doldurmasın. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void brandJoin(PlayerJoinEvent event) {
-        event.joinMessage(messages.get("chat.join",
-                Placeholder.unparsed("player", event.getPlayer().getName())));
+        event.joinMessage(null);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -182,9 +196,13 @@ public final class ConnectionListener implements Listener {
         auth.onQuit(event.getPlayer());
     }
 
-    /** Vanilla "left the game" yerine Nexus temalı duyuru. */
+    /** Vanilla "left the game" yerine Nexus temalı duyuru; doğrulanmamış oyuncu için hiç duyuru yok. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void brandQuit(PlayerQuitEvent event) {
+        if (sessions.isRestricted(event.getPlayer())) {
+            event.quitMessage(null);
+            return;
+        }
         event.quitMessage(messages.get("chat.quit",
                 Placeholder.unparsed("player", event.getPlayer().getName())));
     }

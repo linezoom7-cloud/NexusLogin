@@ -29,7 +29,7 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 - **Tamper-Evident Audit Log:** Every failed/successful login, PIN change, lockout and admin action is written to `plugins/NexusLogin/nexus-auth.log`; lockouts also raise a console `WARNING`.
 - **Offline-mode Impersonation Protection:** Prevents cracked launchers from stealing names like "Notch" or taking over OP accounts.
 - **Visual Feedback:** 48-frame pre-computed gradient BossBar animation, rotating portal dust particles, sounds, and blindfold isolation.
-- **Safety First:** Temporary invulnerability, fire extinguishing, and inventory hiding during login, with 100% safe state restoration on auth or disconnect.
+- **Safety First:** Temporary invulnerability, fire extinguishing, and inventory hiding during login, with state restoration on auth or disconnect (inventory is backed up to disk first, so a crash can be recovered on the next join).
 
 ---
 
@@ -47,7 +47,7 @@ Output: `build/libs/NexusLogin-1.0.4.jar`
 
 ### Installation
 1. Drop `NexusLogin-1.0.4.jar` into your server's `plugins/` folder.
-2. Start the server! Paper will automatically download the required libraries (`HikariCP`, `Argon2-jvm`, `MariaDB Connector/J`) on first boot.
+2. Start the server! Paper will automatically download the required libraries (`HikariCP`, `Argon2-jvm`, `MariaDB Connector/J`) on first boot. This needs internet access to Maven Central; if the download fails the plugin cannot start, and the server then has no login protection from this plugin, so watch the first-boot log.
 3. Nothing else — the resource pack is served over the Minecraft port (`resource-pack.delivery: same-port`). On shared hosting (Pterodactyl / Aternos-like panels) **do not** open port `8164`; it is not needed.
 4. The generated ZIP is also written to `plugins/NexusLogin/pack/nexus-pack.zip`, so you can upload it to any static host if needed.
 

@@ -75,6 +75,7 @@ auth:
   # max-attempts: 5
   # lockout-minutes: 5
   # Aynı IP'den açılabilecek en fazla hesap (0 = sınırsız).
+  # ⚠ Relay/proxy/CGNAT arkasında herkes aynı IP görünür: sınır masum oyuncuları da engeller.
   max-accounts-per-ip: 3
   # Giriş yapmış oyuncu, aynı IP'den bu süre içinde dönerse PIN sorulmaz (0 = kapalı).
   # ⚠ GÜVENLİK: Bu özellik IP + UUID'ye güvenir. Aynı IP'yi paylaşan oyuncular (relay,

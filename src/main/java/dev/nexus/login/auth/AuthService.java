@@ -732,6 +732,7 @@ public final class AuthService {
         effects.clearRestrictions(player, session.restrictionSnapshot());
         restorePlayerState(player, session);
         player.updateCommands();
+        Bukkit.broadcast(messages.get("chat.join", Placeholder.unparsed("player", player.getName())));
 
         // Başarı kanıtlandı: yalnızca hesabın hatalı deneme bütçesi sıfırlanır.
         throttle.resetAccount(session.uuid());
