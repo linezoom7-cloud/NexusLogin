@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class DatabaseManagerIntegrationTest {
 
     private static final Logger LOGGER = Logger.getLogger("NexusLoginTest");
-    private static final Executor DIRECT = Runnable::run;
+    private static final Executor DIRECT = r -> r.run();
 
     @TempDir
     Path tempDir;

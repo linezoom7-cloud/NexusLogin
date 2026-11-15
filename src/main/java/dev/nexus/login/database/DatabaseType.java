@@ -22,7 +22,7 @@ public enum DatabaseType {
         try {
             return valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException | NullPointerException e) {
-            String allowed = Arrays.stream(values()).map(Enum::name).collect(Collectors.joining(", "));
+            String allowed = Arrays.stream(values()).map(t -> t.name()).collect(Collectors.joining(", "));
             throw new IllegalArgumentException("database.type geçersiz: '" + raw + "'. İzin verilenler: " + allowed);
         }
     }

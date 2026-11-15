@@ -34,7 +34,7 @@ public final class PinPolicy {
             "112233", "123123", "123321", "147258", "159753", "102030", "111222", "789456",
             "147852", "963852", "142536", "198700", "200000", "100200", "112358", "11223344",
             "12341234", "12344321", "20202020", "19901990"
-    ).stream().map(String::toCharArray).toList();
+    ).stream().map(s -> s.toCharArray()).toList();
 
     private final int minLength;
     private final int maxLength;

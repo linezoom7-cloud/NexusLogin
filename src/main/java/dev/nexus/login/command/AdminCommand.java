@@ -272,7 +272,7 @@ public final class AdminCommand implements TabExecutor {
         if (args.length == 2 && !args[0].equalsIgnoreCase("reload")
                 && !args[0].equalsIgnoreCase("unlockip")) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
-            return Bukkit.getOnlinePlayers().stream().map(Player::getName)
+            return Bukkit.getOnlinePlayers().stream().map(p -> p.getName())
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
         }
         return List.of();

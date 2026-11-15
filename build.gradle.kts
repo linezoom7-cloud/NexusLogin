@@ -3,6 +3,22 @@ plugins {
     eclipse
 }
 
+eclipse {
+    classpath {
+        plusConfigurations.add(configurations.compileClasspath.get())
+        file {
+            whenMerged {
+                val cp = this as org.gradle.plugins.ide.eclipse.model.Classpath
+                cp.entries.forEach { entry ->
+                    if (entry is org.gradle.plugins.ide.eclipse.model.Library) {
+                        entry.entryAttributes["gradle_used_by_scope"] = "main,test"
+                    }
+                }
+            }
+        }
+    }
+}
+
 group = "dev.nexus"
 version = "1.0.2"
 
