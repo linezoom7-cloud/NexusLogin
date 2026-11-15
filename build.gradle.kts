@@ -1,5 +1,6 @@
 plugins {
     java
+    eclipse
 }
 
 group = "dev.nexus"

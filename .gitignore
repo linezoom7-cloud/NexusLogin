@@ -10,6 +10,9 @@ build/
 *.iws
 out/
 bin/
+.classpath
+.project
+.settings/
 
 # Database & Runtime files
 *.db
