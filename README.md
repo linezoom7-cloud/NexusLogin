@@ -43,7 +43,7 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 ```powershell
 .\gradlew.bat build
 ```
-Output: `build/libs/NexusLogin-1.0.5.jar`
+Output: `paper/build/libs/NexusLogin-<version>.jar` (the server plugin). The project has three Gradle modules: `core` (platform-independent code, bundled into the jars), `paper` and `velocity`. The Velocity module is a skeleton during 1.1.0 development and does **not** protect a proxy yet; do not install it.
 
 ### Installation
 1. Drop `NexusLogin-1.0.5.jar` into your server's `plugins/` folder.

@@ -4,3 +4,5 @@ plugins {
 }
 
 rootProject.name = "NexusLogin"
+
+include(":core", ":paper", ":velocity")
