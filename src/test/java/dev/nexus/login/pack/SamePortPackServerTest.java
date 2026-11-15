@@ -160,4 +160,15 @@ class SamePortPackServerTest {
                 "Legacy ping sonrası handler hattan çıkmalı");
         channel.finishAndReleaseAll();
     }
+
+    @Test
+    void buffersIncompleteHttpWithoutCrashing() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new SamePortPackServer.HttpHandler(() -> new byte[]{1}));
+        // Tek bayt (örneğin yavaş/kısmi okuma) geldiğinde ne hata vermeli ne de erken davranmalı
+        channel.writeInbound(Unpooled.copiedBuffer("G", StandardCharsets.US_ASCII));
+        assertNull(channel.readInbound());
+        assertNull(channel.readOutbound());
+        channel.close();
+    }
 }

@@ -7,6 +7,7 @@ import dev.nexus.login.auth.AuthService;
 import dev.nexus.login.auth.SessionManager;
 import dev.nexus.login.concurrent.NexusExecutors;
 import dev.nexus.login.ui.Messages;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
@@ -48,17 +49,28 @@ public final class AdminCommand implements TabExecutor {
     private static final List<String> SUBCOMMANDS =
             List.of("info", "unregister", "resetpass", "unlock", "unlockip", "forcelogin", "reload");
 
-    private final AccountRepository accounts;
-    private final AuthService auth;
-    private final SessionManager sessions;
-    private final NexusExecutors executors;
-    private final Messages messages;
-    private final AuthAudit audit;
+    private volatile @Nullable AccountRepository accounts;
+    private volatile @Nullable AuthService auth;
+    private volatile @Nullable SessionManager sessions;
+    private volatile @Nullable NexusExecutors executors;
+    private volatile @Nullable Messages messages;
+    private volatile @Nullable AuthAudit audit;
 
     private volatile @Nullable ReloadHandler reloadHandler;
 
-    public AdminCommand(AccountRepository accounts, AuthService auth, SessionManager sessions,
-                        NexusExecutors executors, Messages messages, AuthAudit audit) {
+    public AdminCommand(@Nullable AccountRepository accounts, @Nullable AuthService auth,
+                        @Nullable SessionManager sessions, @Nullable NexusExecutors executors,
+                        @Nullable Messages messages, @Nullable AuthAudit audit) {
+        this.accounts = accounts;
+        this.auth = auth;
+        this.sessions = sessions;
+        this.executors = executors;
+        this.messages = messages;
+        this.audit = audit;
+    }
+
+    public void bind(AccountRepository accounts, AuthService auth, SessionManager sessions,
+                     NexusExecutors executors, Messages messages, AuthAudit audit) {
         this.accounts = accounts;
         this.auth = auth;
         this.sessions = sessions;
@@ -77,6 +89,10 @@ public final class AdminCommand implements TabExecutor {
         String sub = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
         if (sub.equals("reload")) {
             handleReload(sender);
+            return true;
+        }
+        if (accounts == null || auth == null || messages == null) {
+            sender.sendMessage(Component.text("§c[NexusLogin] Eklenti kilitli veya henüz başlatılamadı. Yalnızca /nexus reload çalıştırılabilir."));
             return true;
         }
         if (args.length < 2 || !SUBCOMMANDS.contains(sub)) {
@@ -169,8 +185,9 @@ public final class AdminCommand implements TabExecutor {
     private void handleReload(CommandSender sender) {
         ReloadHandler handler = this.reloadHandler;
         if (handler == null) {
-            sender.sendMessage(messages.get("command.admin.reload-failed",
-                    Placeholder.unparsed("error", "reload handler not ready")));
+            sender.sendMessage(messages != null
+                    ? messages.get("command.admin.reload-failed", Placeholder.unparsed("error", "reload handler not ready"))
+                    : Component.text("§c[NexusLogin] Reload handler henüz hazır değil."));
             return;
         }
         ReloadOutcome outcome;
@@ -179,14 +196,21 @@ public final class AdminCommand implements TabExecutor {
         } catch (RuntimeException e) {
             outcome = ReloadOutcome.failed(errorMessage(e));
         }
-        audit.admin(sender.getName(), "reload", outcome.success() ? "ok" : "failed");
+        if (audit != null) {
+            audit.admin(sender.getName(), "reload", outcome.success() ? "ok" : "failed");
+        }
         if (!outcome.success()) {
-            sender.sendMessage(messages.get("command.admin.reload-failed",
-                    Placeholder.unparsed("error", outcome.error() == null ? "?" : outcome.error())));
+            sender.sendMessage(messages != null
+                    ? messages.get("command.admin.reload-failed", Placeholder.unparsed("error", outcome.error() == null ? "?" : outcome.error()))
+                    : Component.text("§c[NexusLogin] Yapılandırma yüklenemedi: " + outcome.error()));
         } else if (outcome.restartRequired()) {
-            sender.sendMessage(messages.get("command.admin.reloaded-restart"));
+            sender.sendMessage(messages != null
+                    ? messages.get("command.admin.reloaded-restart")
+                    : Component.text("§e[NexusLogin] Yapılandırma yüklendi (bazı ayarlar için sunucuyu yeniden başlatmanız gerekir)."));
         } else {
-            sender.sendMessage(messages.get("command.admin.reloaded"));
+            sender.sendMessage(messages != null
+                    ? messages.get("command.admin.reloaded")
+                    : Component.text("§a[NexusLogin] Yapılandırma başarıyla yeniden yüklendi."));
         }
     }
 
@@ -266,6 +290,9 @@ public final class AdminCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String label, @NotNull String[] args) {
+        if (accounts == null || auth == null) {
+            return args.length == 1 && "reload".startsWith(args[0].toLowerCase(Locale.ROOT)) ? List.of("reload") : List.of();
+        }
         if (args.length == 1) {
             return SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         }

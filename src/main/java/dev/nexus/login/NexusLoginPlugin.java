@@ -23,8 +23,10 @@ import dev.nexus.login.ui.AuthEffects;
 import dev.nexus.login.ui.Messages;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Clock;
 import java.util.Objects;
@@ -48,6 +50,9 @@ public final class NexusLoginPlugin extends JavaPlugin {
     private AuthEffects effects;
     private LoginThrottle throttle;
     private RestrictionListener restrictionListener;
+    private volatile @Nullable EmergencyLockdownListener lockdownListener;
+    private volatile @Nullable AdminCommand adminCommand;
+    private volatile @Nullable ConnectionListener connectionListener;
 
     /**
      * Eklentinin açılışta kullandığı yapılandırma. Yeniden başlatma gerektiren bölümler
@@ -67,6 +72,14 @@ public final class NexusLoginPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        // Konsol veya yöneticilerin lockdown anında bile /nexus reload komutunu çalıştırabilmesi
+        // için admin komutu en başta bağlanır.
+        AdminCommand admin = new AdminCommand(null, null, null, null, null, null);
+        admin.setReloadHandler(this::reloadConfiguration);
+        this.adminCommand = admin;
+        command("nexus").setExecutor(admin);
+        command("nexus").setTabCompleter(admin);
+
         PluginSettings settings;
         try {
             settings = PluginSettings.load(getConfig());
@@ -75,6 +88,11 @@ public final class NexusLoginPlugin extends JavaPlugin {
             enterLockdown("config.yml geçersiz: " + e.getMessage());
             return;
         }
+
+        startPlugin(settings);
+    }
+
+    private void startPlugin(PluginSettings settings) {
         this.startupSettings = settings;
 
         Messages messages = new Messages(this, settings.branding());
@@ -101,16 +119,19 @@ public final class NexusLoginPlugin extends JavaPlugin {
         this.restrictionListener = restrictionListener;
         pm.registerEvents(restrictionListener, this);
         pm.registerEvents(new MenuListener(auth), this);
-        pm.registerEvents(new ConnectionListener(() -> ready, accounts, sessions, throttle, auth, messages,
-                audit, getLogger()), this);
+        ConnectionListener connectionListener = new ConnectionListener(() -> ready, accounts, sessions, throttle,
+                auth, messages, audit, getLogger());
+        this.connectionListener = connectionListener;
+        pm.registerEvents(connectionListener, this);
+        auth.registerCleanupTask(connectionListener::pruneStaleOnlineNames);
 
         PlayerCommands playerCommands = new PlayerCommands(auth, sessions, messages);
         command("giris").setExecutor(playerCommands);
         command("pin").setExecutor(playerCommands);
-        AdminCommand admin = new AdminCommand(accounts, auth, sessions, executors, messages, audit);
-        admin.setReloadHandler(this::reloadConfiguration);
-        command("nexus").setExecutor(admin);
-        command("nexus").setTabCompleter(admin);
+
+        if (adminCommand != null) {
+            adminCommand.bind(accounts, auth, sessions, executors, messages, audit);
+        }
 
         auth.startTicker();
         logSecurityWarnings(settings);
@@ -145,6 +166,12 @@ public final class NexusLoginPlugin extends JavaPlugin {
                     if (!isEnabled()) {
                         return;
                     }
+                    // Eğer güvenlik kilidi aktif idiyse artık kaldırılabilir
+                    if (lockdownListener != null) {
+                        HandlerList.unregisterAll(lockdownListener);
+                        lockdownListener = null;
+                        getLogger().info("Güvenlik kilidi (lockdown) kaldırıldı — sunucu yeniden girişlere açıldı.");
+                    }
                     // /reload veya PlugMan sonrası zaten oyunda olanlar da giriş akışından geçer.
                     for (Player online : getServer().getOnlinePlayers()) {
                         auth.begin(online);
@@ -178,9 +205,18 @@ public final class NexusLoginPlugin extends JavaPlugin {
             return AdminCommand.ReloadOutcome.failed(e.getMessage());
         }
 
+        // Eğer başlangıçta açılış hatası/lockdown nedeniyle başlatılamadıysa:
+        if (startupSettings == null || auth == null) {
+            try {
+                startPlugin(updated);
+                return AdminCommand.ReloadOutcome.ok(false);
+            } catch (Exception e) {
+                return AdminCommand.ReloadOutcome.failed("Başlatma hatası: " + e.getMessage());
+            }
+        }
+
         PluginSettings previous = startupSettings;
-        boolean restartRequired = previous == null
-                || !previous.database().equals(updated.database())
+        boolean restartRequired = !previous.database().equals(updated.database())
                 || !previous.hashing().equals(updated.hashing())
                 || !previous.pack().equals(updated.pack())
                 || !previous.audit().equals(updated.audit())
@@ -191,12 +227,24 @@ public final class NexusLoginPlugin extends JavaPlugin {
         try {
             auth.applySettings(updated.auth());
             throttle.updateSettings(updated.auth().throttle());
-            restrictionListener.updateAllowedCommands(updated.auth().allowedCommands());
+            if (restrictionListener != null) {
+                restrictionListener.updateAllowedCommands(updated.auth().allowedCommands());
+            }
             // Marka önce uygulanır: reload() palette'i okur, ardından efektler tazelenir.
-            messages.applyBranding(updated.branding());
-            // Dil değişmiş olabilir; reloadConfig() yukarıda çağrıldı.
-            messages.reload();
-            effects.reloadBranding();
+            if (messages != null) {
+                messages.applyBranding(updated.branding());
+                // Dil değişmiş olabilir; reloadConfig() yukarıda çağrıldı.
+                messages.reload();
+            }
+            if (effects != null) {
+                effects.reloadBranding();
+            }
+            // Başarılı reload sonrası güvenlik kilidini kaldır
+            if (lockdownListener != null && ready.isDone() && !ready.isCompletedExceptionally()) {
+                HandlerList.unregisterAll(lockdownListener);
+                lockdownListener = null;
+                getLogger().info("Güvenlik kilidi (lockdown) kaldırıldı — sunucu yeniden girişlere açıldı.");
+            }
         } catch (RuntimeException e) {
             getLogger().log(Level.WARNING, "Ayarlar canlı uygulanırken hata oluştu.", e);
             return AdminCommand.ReloadOutcome.failed(String.valueOf(e.getMessage()));
@@ -254,7 +302,12 @@ public final class NexusLoginPlugin extends JavaPlugin {
      */
     private void enterLockdown(String reason) {
         getLogger().severe("GÜVENLİK KİLİDİ DEVREDE (FAIL-CLOSED): " + reason);
-        getServer().getPluginManager().registerEvents(new EmergencyLockdownListener(reason), this);
+        if (lockdownListener != null) {
+            HandlerList.unregisterAll(lockdownListener);
+        }
+        EmergencyLockdownListener listener = new EmergencyLockdownListener(reason);
+        this.lockdownListener = listener;
+        getServer().getPluginManager().registerEvents(listener, this);
         for (Player online : getServer().getOnlinePlayers()) {
             online.kick(net.kyori.adventure.text.Component.text("§c[NexusLogin] Güvenlik Kilidi: Kimlik doğrulama sistemi başlatılamadı."));
         }

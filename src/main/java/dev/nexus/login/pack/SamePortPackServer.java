@@ -107,12 +107,32 @@ final class SamePortPackServer implements AutoCloseable {
 
         private final Supplier<byte[]> bytes;
         private @Nullable CompositeByteBuf pending;
+        private @Nullable io.netty.util.concurrent.ScheduledFuture<?> timeoutFuture;
         private boolean decided;
         private boolean minecraft;
         private boolean served;
 
         HttpHandler(Supplier<byte[]> bytes) {
             this.bytes = bytes;
+        }
+
+        @Override
+        public void handlerAdded(ChannelHandlerContext ctx) {
+            // Slowloris / Partial Read koruması: 1-2 bayt gönderip kanalı açık bırakan
+            // botlara karşı 10 saniyelik zaman aşımı tanımlanır.
+            timeoutFuture = ctx.executor().schedule(() -> {
+                if (!decided || (!minecraft && !served)) {
+                    releasePending();
+                    ctx.close();
+                }
+            }, 10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+
+        private void cancelTimeout() {
+            if (timeoutFuture != null) {
+                timeoutFuture.cancel(false);
+                timeoutFuture = null;
+            }
         }
 
         @Override
@@ -134,6 +154,7 @@ final class SamePortPackServer implements AutoCloseable {
                 byte first = pending.getByte(pending.readerIndex());
                 if (first == (byte) 0xFE) {
                     // Minecraft legacy ping (0xFE 0x01 ...): 4 bayt beklemeden hemen Minecraft hattına devret.
+                    cancelTimeout();
                     decided = true;
                     minecraft = true;
                     ByteBuf buffered = pending;
@@ -149,6 +170,7 @@ final class SamePortPackServer implements AutoCloseable {
                 if (!looksLikeHttp(pending)) {
                     // Minecraft el sıkışması (ilk bayt paket uzunluğu) veya eski ping (0xFE):
                     // hiçbir baytı değiştirmeden hattın geri kalanına bırak.
+                    cancelTimeout();
                     minecraft = true;
                     ByteBuf buffered = pending;
                     pending = null;
@@ -165,6 +187,7 @@ final class SamePortPackServer implements AutoCloseable {
             int headerEnd = headerEnd(pending);
             if (headerEnd < 0) {
                 if (pending.readableBytes() > MAX_REQUEST_BYTES) {
+                    cancelTimeout();
                     releasePending();
                     ctx.close();
                 }
@@ -172,6 +195,7 @@ final class SamePortPackServer implements AutoCloseable {
             }
 
             served = true;
+            cancelTimeout();
             try {
                 respond(ctx, requestLine(pending, headerEnd));
             } finally {
@@ -211,12 +235,14 @@ final class SamePortPackServer implements AutoCloseable {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            cancelTimeout();
             releasePending();
             super.channelInactive(ctx);
         }
 
         @Override
         public void handlerRemoved(ChannelHandlerContext ctx) {
+            cancelTimeout();
             releasePending();
         }
 

@@ -4,6 +4,7 @@ import dev.nexus.login.account.Account;
 import dev.nexus.login.account.AccountRepository;
 import dev.nexus.login.concurrent.NexusExecutors;
 import dev.nexus.login.config.AuthSettings;
+import dev.nexus.login.listener.RestrictionListener;
 import dev.nexus.login.menu.PadButton;
 import dev.nexus.login.menu.PinLayout;
 import dev.nexus.login.menu.PinMenu;
@@ -74,6 +75,7 @@ public final class AuthService {
 
     private @Nullable BukkitTask ticker;
     private int frame;
+    private final java.util.List<Runnable> cleanupTasks = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public AuthService(Plugin plugin, AccountRepository accounts, PasswordHasher hasher, NexusExecutors executors,
                        SessionManager sessions, LoginThrottle throttle, AuthAudit audit, AuthEffects effects,
@@ -111,15 +113,18 @@ public final class AuthService {
 
     // ═════════════════════════ yaşam döngüsü ═════════════════════════
 
+    public void registerCleanupTask(Runnable task) {
+        if (task != null) {
+            cleanupTasks.add(task);
+        }
+    }
+
     public void startTicker() {
         ticker = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 2L, 2L);
     }
 
     private void tick() {
         frame++;
-        if (frame % 300 == 0) {
-            sessions.purgeStalePreloads();
-        }
         Instant now = Instant.now();
         for (AuthSession session : sessions.all()) {
             if (!session.isRestricted()) {
@@ -141,6 +146,13 @@ public final class AuthService {
         if (frame % 300 == 0) {
             sessions.purgeStalePreloads();
             throttle.purgeStale();
+            for (Runnable task : cleanupTasks) {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    logger.log(java.util.logging.Level.WARNING, "Periyodik temizlik görevi hata verdi", t);
+                }
+            }
         }
     }
 
@@ -193,7 +205,7 @@ public final class AuthService {
             }
         }
         if (settings.teleportToSpawn()) {
-            player.teleport(player.getWorld().getSpawnLocation());
+            RestrictionListener.performInternalTeleport(player, player.getWorld().getSpawnLocation());
         }
         player.updateCommands();
 
@@ -780,7 +792,7 @@ public final class AuthService {
             session.storedInventory(null);
         }
         if (settings.teleportToSpawn() && settings.restorePreviousLocation() && session.originalLocation() != null) {
-            player.teleport(session.originalLocation());
+            RestrictionListener.performInternalTeleport(player, session.originalLocation());
             session.originalLocation(null);
         }
         // Oturum bitiyor: yedek dosyası normalde yukarıda silindi. Silme daha önce başarısız

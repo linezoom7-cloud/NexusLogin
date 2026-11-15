@@ -63,6 +63,21 @@ public final class ConnectionListener implements Listener {
     }
 
     /**
+     * Ana thread periyodik döngüsünden çağrılır: Oyundan anormal ayrılan veya pre-login'de
+     * takılı kalmış hayalet isimleri temizler.
+     */
+    public void pruneStaleOnlineNames() {
+        java.util.Set<String> active = new java.util.HashSet<>();
+        try {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                active.add(player.getName().toLowerCase(java.util.Locale.ROOT));
+            }
+            onlineNames.retainAll(active);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
      * Paper bu eventi kendi asenkron thread'inde çalıştırır; burada bloklamak (get) ana
      * thread'i ETKİLEMEZ. Hesap burada önceden yüklenir, join anında DB beklenmez.
      */
@@ -96,9 +111,15 @@ public final class ConnectionListener implements Listener {
         // Bunu engellemek için yeni bağlantı reddedilir, oyundaki oyuncu korunur.
         // (Online-mode'da Mojang kimliği doğruladığı için bu gerekmez; orada vanilla davranışı korunur.)
         if (!Bukkit.getOnlineMode() && onlineNames.contains(name.toLowerCase(java.util.Locale.ROOT))) {
-            audit.preLoginDenied(name, event.getUniqueId(), ip, "already-online");
-            disallow(event, "kick.already-online");
-            return;
+            Player existing = Bukkit.getPlayerExact(name);
+            if (existing == null || !existing.isOnline()) {
+                // Oyuncu aslında oyunda değil (hayalet bağlantı veya zaman aşımı artığı): kaydı temizle
+                onlineNames.remove(name.toLowerCase(java.util.Locale.ROOT));
+            } else {
+                audit.preLoginDenied(name, event.getUniqueId(), ip, "already-online");
+                disallow(event, "kick.already-online");
+                return;
+            }
         }
 
         try {

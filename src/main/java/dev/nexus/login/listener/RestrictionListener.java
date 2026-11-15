@@ -57,6 +57,7 @@ public final class RestrictionListener implements Listener {
      * kapıyı yeniden açamaz hale gelmemelidir.
      */
     private static final Set<String> GATE_COMMANDS = Set.of("giris", "login", "l");
+    private static final Set<java.util.UUID> INTERNAL_TELEPORTS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final SessionManager sessions;
     private final Messages messages;
@@ -66,6 +67,22 @@ public final class RestrictionListener implements Listener {
         this.sessions = sessions;
         this.messages = messages;
         this.allowedCommands = normalizeAll(allowedCommands);
+    }
+
+    /**
+     * Eklenti içi ışınlamaları (spawn, önceki konumu geri yükleme, void kurtarma)
+     * kısıtlama engelinden muaf tutarak güvenli şekilde gerçekleştirir.
+     */
+    public static boolean performInternalTeleport(Player player, org.bukkit.Location target) {
+        if (player == null || target == null) {
+            return false;
+        }
+        INTERNAL_TELEPORTS.add(player.getUniqueId());
+        try {
+            return player.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        } finally {
+            INTERNAL_TELEPORTS.remove(player.getUniqueId());
+        }
     }
 
     /** {@code /nexus reload} sonrası komut beyaz listesini günceller. */
@@ -106,15 +123,12 @@ public final class RestrictionListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         if (restricted(event.getPlayer())) {
-            PlayerTeleportEvent.TeleportCause cause = event.getCause();
-            if (cause == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
-                    || cause == PlayerTeleportEvent.TeleportCause.CHORUS_FRUIT
-                    || cause == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL
-                    || cause == PlayerTeleportEvent.TeleportCause.END_PORTAL
-                    || cause == PlayerTeleportEvent.TeleportCause.DISMOUNT
-                    || cause == PlayerTeleportEvent.TeleportCause.SPECTATE) {
-                event.setCancelled(true);
+            // Eklentinin kendi ışınlamaları (spawn, önceki konumu geri alma, void kurtarma) muaf tutulur.
+            if (INTERNAL_TELEPORTS.contains(event.getPlayer().getUniqueId())) {
+                return;
             }
+            // Diğer tüm ışınlanmalar (ender pearl, chorus fruit, portallar, diğer eklentilerin /tp'leri) engellenir.
+            event.setCancelled(true);
         }
     }
 
@@ -152,8 +166,8 @@ public final class RestrictionListener implements Listener {
     public void onDamage(EntityDamageEvent event) {
         if (restricted(event.getEntity())) {
             event.setCancelled(true);
-            if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
-                event.getEntity().teleport(event.getEntity().getWorld().getSpawnLocation());
+            if (event.getCause() == EntityDamageEvent.DamageCause.VOID && event.getEntity() instanceof Player player) {
+                performInternalTeleport(player, player.getWorld().getSpawnLocation());
             }
         }
     }
