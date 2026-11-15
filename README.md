@@ -140,6 +140,9 @@ The PIN gate can only be as strong as the identity data it receives:
 - **`delivery: port`** uses the JDK's built-in HTTP server, which has no request-read timeout. Prefer `same-port` (10 s header / 60 s download limits, max 128 concurrent downloads) or `url`.
 - **Online-mode name reuse:** when a player takes a name that an older account still holds, the old row is renamed to `#<uuid-prefix>`; it gets its real name back on that player's next login.
 
+- **Audit log on crash:** `nexus-auth.log` is written by a background thread and flushed per line. A hard crash (power loss, `kill -9`) can lose the few lines still queued; a normal stop drains the queue.
+- **MariaDB pre-migration backup:** the SQLite backup is covered by tests; the MariaDB backup table (`nexus_accounts_backup_v<N>`) is created with `LIKE` + `INSERT IGNORE` but has not been run against a real MariaDB server by the maintainers. Take your own dump before upgrading a MariaDB database.
+
 ### Upgrade notes
 
 - **1.0.4:** `auth.teleport-to-spawn` now defaults to `true` (also for configs that do not contain the key). Players are teleported to spawn while on the login screen and returned to their previous location after login. Set `teleport-to-spawn: false` to keep the old behaviour.

@@ -49,6 +49,27 @@ class AuthAuditTest {
     }
 
     @Test
+    void floodBeyondQueueCapacityLosesNoLines() throws Exception {
+        int total = 20_000; // kuyruk kapasitesi (5000) çok aşılır: çağıran yazar, hiçbir satır düşmemeli
+        try (AuthAudit audit = new AuthAudit(directory, LOGGER, CLOCK)) {
+            for (int i = 0; i < total; i++) {
+                audit.preLoginDenied("p" + i, UUID_, "1.2.3.4", "locked");
+            }
+        } // close() kuyruğu boşaltır
+
+        try (var lines = Files.lines(directory.resolve("nexus-auth.log"))) {
+            assertEquals(total, lines.count());
+        }
+    }
+
+    @Test
+    void writeAfterCloseStillReachesTheFileOrConsoleWithoutThrowing() {
+        AuthAudit audit = new AuthAudit(directory, LOGGER, CLOCK);
+        audit.close();
+        assertDoesNotThrow(() -> audit.loginSuccess("Steve", UUID_, "1.2.3.4", "PIN"));
+    }
+
+    @Test
     void preventsLogInjection() throws IOException {
         try (AuthAudit audit = new AuthAudit(directory, LOGGER, CLOCK)) {
             audit.loginFailure("bad\nname", UUID_, "1.2.3.4", 1, 5);
