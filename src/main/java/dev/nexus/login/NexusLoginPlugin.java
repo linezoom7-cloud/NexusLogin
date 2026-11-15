@@ -83,7 +83,9 @@ public final class NexusLoginPlugin extends JavaPlugin {
         PluginSettings settings;
         try {
             settings = PluginSettings.load(getConfig());
-        } catch (IllegalArgumentException e) {
+        } catch (RuntimeException e) {
+            // IllegalArgumentException dışında aşırı büyük süreler ArithmeticException /
+            // DateTimeException fırlatabilir; hepsi geçersiz yapılandırma sayılır.
             getLogger().severe("config.yml geçersiz: " + e.getMessage());
             enterLockdown("config.yml geçersiz: " + e.getMessage());
             return;
@@ -201,8 +203,8 @@ public final class NexusLoginPlugin extends JavaPlugin {
         PluginSettings updated;
         try {
             updated = PluginSettings.load(getConfig());
-        } catch (IllegalArgumentException e) {
-            return AdminCommand.ReloadOutcome.failed(e.getMessage());
+        } catch (RuntimeException e) {
+            return AdminCommand.ReloadOutcome.failed(String.valueOf(e.getMessage()));
         }
 
         // Eğer başlangıçta açılış hatası/lockdown nedeniyle başlatılamadıysa:
@@ -309,7 +311,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
         this.lockdownListener = listener;
         getServer().getPluginManager().registerEvents(listener, this);
         for (Player online : getServer().getOnlinePlayers()) {
-            online.kick(net.kyori.adventure.text.Component.text("§c[NexusLogin] Güvenlik Kilidi: Kimlik doğrulama sistemi başlatılamadı."));
+            online.kick(EmergencyLockdownListener.KICK_MESSAGE);
         }
     }
 

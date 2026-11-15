@@ -42,8 +42,13 @@ public record AuthSettings(
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(rememberFor, "rememberFor");
         Objects.requireNonNull(throttle, "throttle");
-        if (timeout.toSeconds() < 15) {
-            throw new IllegalArgumentException("auth.timeout-seconds en az 15 olmalı");
+        // Üst sınır 1 saat: daha uzunu kısıtlı (ölümsüz, kör) hayalet oyuncuları süresiz tutar ve
+        // aşırı büyük değerler Instant hesabında taşma (DateTimeException) üretirdi.
+        if (timeout.toSeconds() < 15 || timeout.toSeconds() > 3_600) {
+            throw new IllegalArgumentException("auth.timeout-seconds 15-3600 aralığında olmalı");
+        }
+        if (rememberFor.isNegative() || rememberFor.toDays() > 30) {
+            throw new IllegalArgumentException("auth.session-remember-minutes 0-43200 (30 gün) aralığında olmalı");
         }
         if (maxAccountsPerIp < 0) {
             throw new IllegalArgumentException("auth.max-accounts-per-ip >= 0 olmalı");

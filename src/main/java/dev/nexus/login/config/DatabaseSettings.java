@@ -35,6 +35,14 @@ public record DatabaseSettings(
             requireNotBlank(host, "database.mariadb.host");
             requireNotBlank(database, "database.mariadb.database");
             requireNotBlank(username, "database.mariadb.username");
+            // Host ve veritabanı adı JDBC adresine gömülür; '/', '?', '&' gibi karakterler
+            // adrese ek sürücü parametresi (ör. allowLocalInfile=true) enjekte edebilirdi.
+            if (!host.trim().matches("[A-Za-z0-9.\\-]+|\\[[0-9A-Fa-f:.]+\\]")) {
+                throw new IllegalArgumentException("database.mariadb.host geçersiz: '" + host + "'");
+            }
+            if (!database.matches("[A-Za-z0-9_$\\-]{1,64}")) {
+                throw new IllegalArgumentException("database.mariadb.database yalnızca harf, rakam, _ $ - içerebilir");
+            }
             if (port < 1 || port > 65_535) {
                 throw new IllegalArgumentException("database.mariadb.port 1-65535 aralığında olmalı: " + port);
             }

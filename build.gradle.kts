@@ -20,7 +20,7 @@ eclipse {
 }
 
 group = "dev.nexus"
-version = "1.0.2"
+version = "1.0.3"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))

@@ -43,10 +43,10 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 ```powershell
 .\gradlew.bat build
 ```
-Output: `build/libs/NexusLogin-1.0.2.jar`
+Output: `build/libs/NexusLogin-1.0.3.jar`
 
 ### Installation
-1. Drop `NexusLogin-1.0.2.jar` into your server's `plugins/` folder.
+1. Drop `NexusLogin-1.0.3.jar` into your server's `plugins/` folder.
 2. Start the server! Paper will automatically download the required libraries (`HikariCP`, `Argon2-jvm`, `MariaDB Connector/J`) on first boot.
 3. Nothing else — the resource pack is served over the Minecraft port (`resource-pack.delivery: same-port`). On shared hosting (Pterodactyl / Aternos-like panels) **do not** open port `8164`; it is not needed.
 4. The generated ZIP is also written to `plugins/NexusLogin/pack/nexus-pack.zip`, so you can upload it to any static host if needed.
@@ -133,6 +133,12 @@ The PIN gate can only be as strong as the identity data it receives:
 - **`premium-auto-login` defaults to `false`.** It authenticates a player solely from the Minecraft session; a stolen Microsoft/Mojang session or a cracked client that can spoof the handshake has no second factor.
 - **Optional pepper.** Set `security.argon2.pepper` to a random secret of at least 16 characters. Without it, a leaked database can be attacked offline; with it, the attacker also needs the server configuration. Changing the pepper invalidates all existing PINs, so set it once and keep it in a secret manager/backup.
 - **MariaDB TLS.** Set `database.mariadb.ssl-mode: verify-full` for any database that is not on `localhost`; otherwise credentials and PIN hashes travel in clear text.
+
+### Known limits (by design)
+
+- **Targeted lockout:** anyone can type wrong PINs for a known name and lock that account (escalating up to `max-lockout-minutes`). This is the price of a per-account counter that survives reconnects. Release it with `/nexus unlock <player>` from the console.
+- **`delivery: port`** uses the JDK's built-in HTTP server, which has no request-read timeout. Prefer `same-port` (10 s header / 60 s download limits, max 128 concurrent downloads) or `url`.
+- **Online-mode name reuse:** when a player takes a name that an older account still holds, the old row is renamed to `#<uuid-prefix>`; it gets its real name back on that player's next login.
 
 ### Schema upgrade (v1 → v2)
 

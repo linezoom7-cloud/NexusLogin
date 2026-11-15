@@ -112,6 +112,33 @@ class SamePortPackServerTest {
     }
 
     @Test
+    void limitsConcurrentDownloadsAndReleasesSlots() {
+        int before = SamePortPackServer.IN_FLIGHT.get();
+        SamePortPackServer.IN_FLIGHT.set(SamePortPackServer.MAX_IN_FLIGHT);
+        try {
+            EmbeddedChannel busy = new EmbeddedChannel(new SamePortPackServer.HttpHandler(() -> new byte[]{1}));
+            busy.writeInbound(Unpooled.copiedBuffer(
+                    "GET /nexus-pack.zip HTTP/1.1\r\nHost: x\r\n\r\n", StandardCharsets.US_ASCII));
+            ByteBuf response = busy.readOutbound();
+            assertTrue(response.toString(0, 16, StandardCharsets.US_ASCII).startsWith("HTTP/1.1 503"));
+            response.release();
+            busy.finishAndReleaseAll();
+            assertEquals(SamePortPackServer.MAX_IN_FLIGHT, SamePortPackServer.IN_FLIGHT.get(),
+                    "reddedilen istek sayacı artırmamalı");
+        } finally {
+            SamePortPackServer.IN_FLIGHT.set(before);
+        }
+
+        EmbeddedChannel ok = new EmbeddedChannel(new SamePortPackServer.HttpHandler(() -> new byte[]{1}));
+        ok.writeInbound(Unpooled.copiedBuffer(
+                "GET /nexus-pack.zip HTTP/1.1\r\nHost: x\r\n\r\n", StandardCharsets.US_ASCII));
+        ByteBuf served = ok.readOutbound();
+        served.release();
+        ok.finishAndReleaseAll();
+        assertEquals(before, SamePortPackServer.IN_FLIGHT.get(), "bağlantı kapanınca yuva geri verilmeli");
+    }
+
+    @Test
     void answers404ForUnknownPaths() {
         EmbeddedChannel channel = new EmbeddedChannel(
                 new SamePortPackServer.HttpHandler(() -> new byte[]{1}));

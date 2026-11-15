@@ -48,6 +48,18 @@ class DatabaseSettingsTest {
     }
 
     @Test
+    void rejectsJdbcUrlParameterInjection() {
+        assertThrows(IllegalArgumentException.class, () -> new DatabaseSettings(DatabaseType.MARIADB, "nexus.db",
+                "db.example.com", 3306, "nexus?allowLocalInfile=true", "nexus", "", "disable",
+                10, 2, 5_000L, 1_800_000L));
+        assertThrows(IllegalArgumentException.class, () -> new DatabaseSettings(DatabaseType.MARIADB, "nexus.db",
+                "evil.com/x?a=b", 3306, "nexus", "nexus", "", "disable",
+                10, 2, 5_000L, 1_800_000L));
+        assertDoesNotThrow(() -> new DatabaseSettings(DatabaseType.MARIADB, "nexus.db",
+                "[::1]", 3306, "nexus_db", "nexus", "", "disable", 10, 2, 5_000L, 1_800_000L));
+    }
+
+    @Test
     void validatesPoolBounds() {
         assertThrows(IllegalArgumentException.class, () -> new DatabaseSettings(
                 DatabaseType.MARIADB, "nexus.db", "localhost", 3306, "nexus", "nexus", "",

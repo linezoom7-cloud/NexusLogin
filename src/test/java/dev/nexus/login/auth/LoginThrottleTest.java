@@ -190,6 +190,30 @@ class LoginThrottleTest {
     }
 
     @Test
+    void lockedFailureReportsThresholdAsAttempts() {
+        LoginThrottle throttle = new LoginThrottle(settings(2, 0), clock, null);
+        throttle.recordFailure(IP, ACCOUNT);
+        LoginThrottle.FailureResult locked = throttle.recordFailure(IP, ACCOUNT);
+        assertTrue(locked.locked());
+        assertEquals(2, locked.attempts(), "denetim günlüğü 0/2 değil 2/2 göstermeli");
+    }
+
+    @Test
+    void lockDurationNeverOverflowsBelowMax() {
+        // Çok büyük taban: base << shift taşmadan önce tavana sabitlenmeli.
+        ThrottleSettings huge = new ThrottleSettings(Duration.ofMinutes(15), 1, 0,
+                Duration.ofDays(200), Duration.ofDays(365));
+        LoginThrottle throttle = new LoginThrottle(huge, clock, null);
+        for (int i = 0; i < 25; i++) {
+            LoginThrottle.FailureResult result = throttle.recordFailure(IP, ACCOUNT);
+            assertTrue(result.locked());
+            assertTrue(result.lock().remaining().compareTo(Duration.ofDays(200)) >= 0,
+                    "kilit süresi tabanın altına düşmemeli (taşma)");
+            clock.advance(result.lock().remaining().plusSeconds(1));
+        }
+    }
+
+    @Test
     void verdictMinutesRoundUp() {
         assertEquals(1, new LoginThrottle.Verdict("k", Duration.ofSeconds(1), 1).minutes());
         assertEquals(1, new LoginThrottle.Verdict("k", Duration.ofSeconds(30), 1).minutes());

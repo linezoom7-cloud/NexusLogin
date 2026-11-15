@@ -84,8 +84,23 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
                     thread.setDaemon(true);
                     return thread;
                 },
-                // Kuyruk dolu: görevi düşür ama bunu (seyrek de olsa) logla.
-                (task, executor) -> logDroppedWrite());
+                // Kuyruk dolu: sıradan yazımı düşür ama bunu (seyrek de olsa) logla.
+                // Yönetici/başarılı giriş silmeleri asla düşürülmez, G/Ç executor'üne aktarılır.
+                (task, executor) -> {
+                    if (task instanceof CriticalWrite) {
+                        ioExecutor.execute(task);
+                    } else {
+                        logDroppedWrite();
+                    }
+                });
+    }
+
+    /** Kuyruk dolu olsa bile kaybolmaması gereken yazım (ör. kilit silme). */
+    private record CriticalWrite(Runnable work) implements Runnable {
+        @Override
+        public void run() {
+            work.run();
+        }
     }
 
     /** Kuyruk taşmasını en fazla 30 saniyede bir loglar; saldırı altında log spam'i olmaz. */
@@ -141,9 +156,10 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
 
     @Override
     public void delete(String key) {
-        // Admin işlemleri (kilit açma / hesap silme) yazma kuyruğu taşmasından etkilenmemelidir;
-        // bu nedenle doğrudan G/Ç executor'ünde çalıştırılır.
-        CompletableFuture.runAsync(() -> {
+        // Silme, save() ile AYNI sıralı kuyruktan geçer: aksi halde kuyrukta bekleyen eski bir
+        // "kilitli" yazımı silmeden sonra çalışıp kilidi veritabanında diriltebilirdi.
+        // Kuyruk doluysa reddetme politikası işi G/Ç executor'üne aktarır (asla düşmez).
+        Runnable work = () -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement ps = connection.prepareStatement(DELETE)) {
                 ps.setString(1, key);
@@ -151,7 +167,12 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "Kaba kuvvet sayacı silinemedi: " + key, e);
             }
-        }, ioExecutor);
+        };
+        try {
+            writes.execute(new CriticalWrite(work));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            logger.log(Level.WARNING, "Kaba kuvvet sayacı silme işi kuyruğa alınamadı: " + key, e);
+        }
     }
 
     @Override

@@ -36,6 +36,14 @@ final class SamePortPackServer implements AutoCloseable {
     private static final Key LISTENER_KEY = Key.key("nexus", "pack_http");
     /** Bir HTTP isteğinin başlık bölümü için üst sınır; daha uzunu reddedilir. */
     private static final int MAX_REQUEST_BYTES = 8 * 1024;
+    /**
+     * Aynı anda gönderilen en fazla paket yanıtı (bellek tavanı ≈ 128 × ~150 KB ≈ 20 MB).
+     * Restart sonrası toplu girişte aşılırsa fazlası 503 alır ve yedek menüyü görür.
+     */
+    static final int MAX_IN_FLIGHT = 128;
+    /** İstek başlığından sonra indirmenin tamamlanması için süre tavanı. */
+    private static final long DOWNLOAD_TIMEOUT_SECONDS = 60;
+    static final java.util.concurrent.atomic.AtomicInteger IN_FLIGHT = new java.util.concurrent.atomic.AtomicInteger();
 
     private final Class<?> holderClass;
     /** Güçlü referans: Paper'ın dinleyici listesi proxy'yi zayıf tutmaz, ama biz yine de saklarız. */
@@ -195,7 +203,12 @@ final class SamePortPackServer implements AutoCloseable {
             }
 
             served = true;
+            // Yanıtı okumayan (yavaş okuyan) istemci bağlantıyı ve tamponu sonsuza dek tutmasın:
+            // indirme dahil toplam süreye tavan konur.
             cancelTimeout();
+            timeoutFuture = ctx.executor().schedule(() -> {
+                ctx.close();
+            }, DOWNLOAD_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
             try {
                 respond(ctx, requestLine(pending, headerEnd));
             } finally {
@@ -212,12 +225,27 @@ final class SamePortPackServer implements AutoCloseable {
                         "Not found".getBytes(StandardCharsets.UTF_8), false);
                 return;
             }
+            if (!head) {
+                // Her yanıt paketin tam bir kopyasını (≈150 KB) doğrudan bellekte tutar. Sınır
+                // olmadan binlerce yavaş bağlantı sunucunun belleğini tüketebilirdi.
+                if (IN_FLIGHT.incrementAndGet() > MAX_IN_FLIGHT) {
+                    IN_FLIGHT.decrementAndGet();
+                    write(ctx, 503, "text/plain; charset=utf-8",
+                            "Busy".getBytes(StandardCharsets.UTF_8), false);
+                    return;
+                }
+                ctx.channel().closeFuture().addListener(f -> IN_FLIGHT.decrementAndGet());
+            }
             write(ctx, 200, "application/zip", body, head);
         }
 
         private static void write(ChannelHandlerContext ctx, int status, String contentType,
                                   byte[] body, boolean headOnly) {
-            String reason = status == 200 ? "OK" : "Not Found";
+            String reason = switch (status) {
+                case 200 -> "OK";
+                case 503 -> "Service Unavailable";
+                default -> "Not Found";
+            };
             String header = "HTTP/1.1 " + status + " " + reason + "\r\n"
                     + "Content-Type: " + contentType + "\r\n"
                     + "Content-Length: " + body.length + "\r\n"

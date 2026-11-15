@@ -8,9 +8,12 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -56,6 +59,8 @@ public final class AuthEffects {
 
     private final JavaPlugin plugin;
     private final Messages messages;
+    /** Oyuncu verisinde "kısıtlama altında" işareti; değer = kısıtlama öncesi invulnerable. */
+    private final NamespacedKey restrictedKey;
 
     private volatile NexusPalette palette;
     private volatile List<Component> bossBarFrames;
@@ -64,6 +69,7 @@ public final class AuthEffects {
     public AuthEffects(JavaPlugin plugin, Messages messages) {
         this.plugin = plugin;
         this.messages = messages;
+        this.restrictedKey = new NamespacedKey(plugin, "restricted");
         reloadBranding();
     }
 
@@ -100,13 +106,24 @@ public final class AuthEffects {
     }
 
     public Snapshot applyRestrictions(Player player) {
+        PersistentDataContainer pdc = player.getPersistentDataContainer();
+        // Önceki oturum çökme/elektrik kesintisiyle bittiyse, oyuncu verisinde BİZİM sonsuz
+        // körlük/yavaşlık efektlerimiz ve invulnerable=true kalmıştır. Bunları "orijinal durum"
+        // sanıp girişten sonra geri yüklemek kalıcı körlük + ölümsüzlük (god mode) demekti.
+        Byte leftoverInvulnerable = pdc.get(restrictedKey, PersistentDataType.BYTE);
+        boolean crashed = leftoverInvulnerable != null;
+
         // Oyuncunun kendi (başka bir eklentiden/iksirden gelen) efektlerini ezmemek için
         // önce mevcut durumu kaydet. Kısıtlama bitince aynen geri konur.
         Snapshot snapshot = new Snapshot(
-                player.getPotionEffect(PotionEffectType.BLINDNESS),
-                player.getPotionEffect(PotionEffectType.SLOWNESS),
-                player.isInvulnerable(),
+                ownEffect(player.getPotionEffect(PotionEffectType.BLINDNESS), 0, crashed),
+                ownEffect(player.getPotionEffect(PotionEffectType.SLOWNESS), 255, crashed),
+                crashed ? leftoverInvulnerable != 0 : player.isInvulnerable(),
                 player.getFireTicks());
+
+        // İşaret, efektlerden ÖNCE yazılır: oyuncu verisi bu ikisi arasında kaydedilse bile
+        // bir sonraki girişte gerçek invulnerable değeri bilinir.
+        pdc.set(restrictedKey, PersistentDataType.BYTE, (byte) (snapshot.invulnerable() ? 1 : 0));
 
         // ambient=false, particles=false, icon=false → ekranda iksir ikonu/partikülü görünmez.
         player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,
@@ -118,18 +135,34 @@ public final class AuthEffects {
         return snapshot;
     }
 
+    /**
+     * Çökme artığı tespit edildiyse, bizim imzamızı taşıyan efekt (sonsuz süre, aynı seviye,
+     * partikül/ikon kapalı) orijinal durum sayılmaz.
+     */
+    private static @Nullable PotionEffect ownEffect(@Nullable PotionEffect effect, int amplifier, boolean crashed) {
+        if (crashed && effect != null && effect.isInfinite() && effect.getAmplifier() == amplifier
+                && !effect.hasParticles() && !effect.hasIcon()) {
+            return null;
+        }
+        return effect;
+    }
+
     public void clearRestrictions(Player player, @Nullable Snapshot snapshot) {
+        PersistentDataContainer pdc = player.getPersistentDataContainer();
         if (snapshot == null) {
             // Güvenlik ağı: kayıt yoksa (ör. eski oturum) en azından kendi efektlerimizi kaldır.
+            Byte stored = pdc.get(restrictedKey, PersistentDataType.BYTE);
             player.removePotionEffect(PotionEffectType.BLINDNESS);
             player.removePotionEffect(PotionEffectType.SLOWNESS);
-            player.setInvulnerable(false);
+            player.setInvulnerable(stored != null && stored != 0);
+            pdc.remove(restrictedKey);
             return;
         }
         restoreEffect(player, PotionEffectType.BLINDNESS, snapshot.blindness());
         restoreEffect(player, PotionEffectType.SLOWNESS, snapshot.slowness());
         player.setInvulnerable(snapshot.invulnerable());
         player.setFireTicks(snapshot.fireTicks());
+        pdc.remove(restrictedKey);
     }
 
     private static void restoreEffect(Player player, PotionEffectType type, @Nullable PotionEffect previous) {

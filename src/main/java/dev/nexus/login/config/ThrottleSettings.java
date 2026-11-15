@@ -42,6 +42,10 @@ public record ThrottleSettings(
         if (maxLockout.compareTo(baseLockout) < 0) {
             throw new IllegalArgumentException("auth.throttle.max-lockout-minutes >= base-lockout-minutes olmalı");
         }
+        // 1 yıl tavan: daha büyük değerler ms'ye çevrilirken taşabilir (ArithmeticException).
+        if (maxLockout.toDays() > 365 || window.toDays() > 365) {
+            throw new IllegalArgumentException("auth.throttle süreleri en fazla 365 gün olabilir");
+        }
     }
 
     public boolean ipEnabled() {

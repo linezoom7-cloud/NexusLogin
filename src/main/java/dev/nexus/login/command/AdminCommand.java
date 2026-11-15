@@ -8,6 +8,7 @@ import dev.nexus.login.auth.SessionManager;
 import dev.nexus.login.concurrent.NexusExecutors;
 import dev.nexus.login.ui.Messages;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
@@ -92,7 +93,7 @@ public final class AdminCommand implements TabExecutor {
             return true;
         }
         if (accounts == null || auth == null || messages == null) {
-            sender.sendMessage(Component.text("§c[NexusLogin] Eklenti kilitli veya henüz başlatılamadı. Yalnızca /nexus reload çalıştırılabilir."));
+            sender.sendMessage(Component.text("[NexusLogin] Eklenti kilitli veya henüz başlatılamadı. Yalnızca /nexus reload çalıştırılabilir.", NamedTextColor.RED));
             return true;
         }
         if (args.length < 2 || !SUBCOMMANDS.contains(sub)) {
@@ -187,7 +188,7 @@ public final class AdminCommand implements TabExecutor {
         if (handler == null) {
             sender.sendMessage(messages != null
                     ? messages.get("command.admin.reload-failed", Placeholder.unparsed("error", "reload handler not ready"))
-                    : Component.text("§c[NexusLogin] Reload handler henüz hazır değil."));
+                    : Component.text("[NexusLogin] Reload handler henüz hazır değil.", NamedTextColor.RED));
             return;
         }
         ReloadOutcome outcome;
@@ -202,15 +203,15 @@ public final class AdminCommand implements TabExecutor {
         if (!outcome.success()) {
             sender.sendMessage(messages != null
                     ? messages.get("command.admin.reload-failed", Placeholder.unparsed("error", outcome.error() == null ? "?" : outcome.error()))
-                    : Component.text("§c[NexusLogin] Yapılandırma yüklenemedi: " + outcome.error()));
+                    : Component.text("[NexusLogin] Yapılandırma yüklenemedi: " + outcome.error(), NamedTextColor.RED));
         } else if (outcome.restartRequired()) {
             sender.sendMessage(messages != null
                     ? messages.get("command.admin.reloaded-restart")
-                    : Component.text("§e[NexusLogin] Yapılandırma yüklendi (bazı ayarlar için sunucuyu yeniden başlatmanız gerekir)."));
+                    : Component.text("[NexusLogin] Yapılandırma yüklendi (bazı ayarlar için sunucuyu yeniden başlatmanız gerekir).", NamedTextColor.YELLOW));
         } else {
             sender.sendMessage(messages != null
                     ? messages.get("command.admin.reloaded")
-                    : Component.text("§a[NexusLogin] Yapılandırma başarıyla yeniden yüklendi."));
+                    : Component.text("[NexusLogin] Yapılandırma başarıyla yeniden yüklendi.", NamedTextColor.GREEN));
         }
     }
 

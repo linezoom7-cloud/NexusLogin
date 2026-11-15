@@ -33,6 +33,9 @@ public final class SqlAccountRepository implements AccountRepository {
     private static final String UPDATE_PREMIUM = "UPDATE nexus_accounts SET is_premium = ? WHERE uuid = ?";
     private static final String DELETE = "DELETE FROM nexus_accounts WHERE uuid = ?";
     private static final String COUNT_BY_REG_IP = "SELECT COUNT(*) FROM nexus_accounts WHERE reg_ip = ?";
+    private static final String SELECT_NAME_HOLDERS =
+            "SELECT uuid FROM nexus_accounts WHERE player_name = ? AND uuid <> ?";
+    private static final String RENAME = "UPDATE nexus_accounts SET player_name = ? WHERE uuid = ?";
 
     private final DatabaseManager database;
     private final Executor executor;
@@ -92,6 +95,30 @@ public final class SqlAccountRepository implements AccountRepository {
     @Override
     public CompletableFuture<Boolean> delete(UUID uuid) {
         return withConnection(c -> update(c, DELETE, uuid.toString()));
+    }
+
+    @Override
+    public CompletableFuture<Integer> releaseName(String playerName, UUID exceptUuid) {
+        return withConnection(c -> {
+            java.util.List<String> holders = new java.util.ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement(SELECT_NAME_HOLDERS)) {
+                ps.setString(1, playerName);
+                ps.setString(2, exceptUuid.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        holders.add(rs.getString(1));
+                    }
+                }
+            }
+            int released = 0;
+            for (String holder : holders) {
+                // Yer tutucu: '#' + UUID'nin ilk 15 hex hanesi = 16 karakter (sütun sınırı).
+                // '#' Minecraft isimlerinde geçersiz olduğu için gerçek bir isimle çakışamaz.
+                String placeholder = "#" + holder.replace("-", "").substring(0, 15);
+                released += update(c, RENAME, placeholder, holder) ? 1 : 0;
+            }
+            return released;
+        });
     }
 
     @Override

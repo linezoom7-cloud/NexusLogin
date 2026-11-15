@@ -38,6 +38,12 @@ import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerShearEntityEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
+import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 
 import java.util.Collection;
@@ -57,6 +63,8 @@ public final class RestrictionListener implements Listener {
      * kapıyı yeniden açamaz hale gelmemelidir.
      */
     private static final Set<String> GATE_COMMANDS = Set.of("giris", "login", "l");
+    /** plugin.yml'deki {@code name: NexusLogin} → Bukkit ad alanı. */
+    private static final String OWN_NAMESPACE = "nexuslogin";
     private static final Set<java.util.UUID> INTERNAL_TELEPORTS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final SessionManager sessions;
@@ -269,6 +277,56 @@ public final class RestrictionListener implements Listener {
         }
     }
 
+    /** Tekne/vagon gibi araçlara vurmak EntityDamageByEntityEvent değil, bu olayları üretir. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onVehicleDamage(VehicleDamageEvent event) {
+        if (restricted(event.getAttacker()) || restrictedShooter(event.getAttacker())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onVehicleDestroy(VehicleDestroyEvent event) {
+        if (restricted(event.getAttacker()) || restrictedShooter(event.getAttacker())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Tablo ve eşya çerçevesi kırma (tablolar hasar olayı üretmez). */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onHangingBreak(HangingBreakByEntityEvent event) {
+        if (restricted(event.getRemover()) || restrictedShooter(event.getRemover())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBucketFill(PlayerBucketFillEvent event) {
+        if (restricted(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Kartopu, yumurta, ender incisi, trident vb. fırlatma. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onProjectileLaunch(ProjectileLaunchEvent event) {
+        if (event.getEntity().getShooter() instanceof Player shooter && restricted(shooter)) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean restrictedShooter(@org.jetbrains.annotations.Nullable Entity entity) {
+        return entity instanceof Projectile projectile && projectile.getShooter() instanceof Player shooter
+                && restricted(shooter);
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
         // PIN menüsündeki tıklamalar MenuListener'a aittir.
@@ -358,7 +416,7 @@ public final class RestrictionListener implements Listener {
         if (!restricted(event.getPlayer())) {
             return;
         }
-        if (!allowedCommands.contains(label(event.getMessage()))) {
+        if (!isAllowed(allowedCommands, label(event.getMessage()))) {
             deny(event.getPlayer(), event);
         }
     }
@@ -368,27 +426,45 @@ public final class RestrictionListener implements Listener {
     public void onCommandList(PlayerCommandSendEvent event) {
         if (restricted(event.getPlayer())) {
             Set<String> allowed = allowedCommands;
-            // Komut adları "nexuslogin:giris" gibi ad alanı içerebilir; ikisini de kabul et.
-            event.getCommands().removeIf(command -> !allowed.contains(normalize(command)));
+            event.getCommands().removeIf(command -> !isAllowed(allowed, normalize(command)));
         }
     }
 
-    /** "/NexusLogin:giris arg" → "giris" */
-    private static String label(String message) {
+    /**
+     * Ad alanlı komutlar ({@code /eklenti:komut}) için ad alanını körü körüne sıyırmak,
+     * {@code /başkaeklenti:login} gibi BAŞKA bir eklentinin aynı adlı komutunu giriş
+     * yapmadan çalıştırmaya izin veriyordu. Artık ad alanlı biçim yalnızca kendi ad alanımız
+     * ({@code nexuslogin:}) veya config'te birebir yazılmış tam biçim ise kabul edilir.
+     */
+    static boolean isAllowed(Set<String> allowed, String label) {
+        if (label.isEmpty()) {
+            return false;
+        }
+        if (allowed.contains(label)) {
+            return true;
+        }
+        int colon = label.indexOf(':');
+        if (colon < 0) {
+            return false;
+        }
+        String namespace = label.substring(0, colon);
+        String command = label.substring(colon + 1);
+        return OWN_NAMESPACE.equals(namespace) && allowed.contains(command);
+    }
+
+    /** "/NexusLogin:giris arg" → "nexuslogin:giris" */
+    static String label(String message) {
         String body = message.startsWith("/") ? message.substring(1) : message;
         int space = body.indexOf(' ');
         String label = space < 0 ? body : body.substring(0, space);
         return normalize(label);
     }
 
+    /** Küçük harf, baştaki "/" atılır; ad alanı KORUNUR. */
     private static String normalize(String raw) {
         String value = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
         if (value.startsWith("/")) {
             value = value.substring(1);
-        }
-        int colon = value.indexOf(':');
-        if (colon >= 0) {
-            value = value.substring(colon + 1);
         }
         return value;
     }

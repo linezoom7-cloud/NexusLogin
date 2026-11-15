@@ -121,7 +121,9 @@ public final class LoginThrottle {
         }
         LoginAttempt account = bump(accountKey(uuid), settings.accountThreshold(), now);
         best = later(best, verdictOf(account, now));
-        return new FailureResult(best, account.attempts(), settings.accountThreshold());
+        // Kilitlenen kayıtta sayaç sıfırlanır; denetim günlüğünde "0/5" yerine eşiği raporla.
+        int attempts = account.lockedUntil() > now ? settings.accountThreshold() : account.attempts();
+        return new FailureResult(best, attempts, settings.accountThreshold());
     }
 
     /**
@@ -223,8 +225,11 @@ public final class LoginThrottle {
         if (attempt.lockedUntil() != 0) {
             LoginAttempt cleared = new LoginAttempt(key, attempt.attempts(), attempt.windowStart(), 0,
                     attempt.blockCount(), now);
-            states.put(key, cleared);
-            save(cleared);
+            // Pre-login (asenkron) ile recordFailure (ana thread) yarışabilir: yalnızca kayıt
+            // okunduğundan beri değişmediyse yaz, aksi halde yeni hatalı deneme ezilirdi.
+            if (states.replace(key, attempt, cleared)) {
+                save(cleared);
+            }
         }
         return null;
     }
@@ -266,8 +271,12 @@ public final class LoginThrottle {
         long base = settings.baseLockout().toMillis();
         long max = settings.maxLockout().toMillis();
         int shift = Math.min(Math.max(0, blockCount - 1), 20);
-        long millis = base << shift;
-        return millis <= 0 || millis > max ? max : millis;
+        // Kaydırma öncesi taşma kontrolü: base << shift long sınırını aşıp küçük pozitif
+        // bir değere sarabilir ve kilidi neredeyse sıfıra indirebilirdi.
+        if (base <= 0 || base > (max >> shift)) {
+            return max;
+        }
+        return base << shift;
     }
 
     private void save(LoginAttempt attempt) {

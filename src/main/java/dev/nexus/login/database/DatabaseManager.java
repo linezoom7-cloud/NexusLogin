@@ -90,7 +90,7 @@ public final class DatabaseManager implements AutoCloseable {
             }
             case MARIADB -> {
                 config.setJdbcUrl("jdbc:mariadb://%s:%d/%s".formatted(
-                        settings.host(), settings.port(), settings.database()));
+                        settings.host().trim(), settings.port(), settings.database()));
                 config.setUsername(settings.username());
                 config.setPassword(settings.password());
                 config.setMaximumPoolSize(settings.maximumPoolSize());
@@ -98,6 +98,9 @@ public final class DatabaseManager implements AutoCloseable {
                 // TLS: sslMode=verify-full uzak sunucularda MITM'e karşı önerilir. Varsayılan
                 // "disable" geriye dönük uyumluluk içindir; aşağıda uyarı verilir.
                 config.addDataSourceProperty("sslMode", settings.sslMode());
+                // LOAD DATA LOCAL INFILE: kötü niyetli/ele geçirilmiş bir DB sunucusu bu özellikle
+                // oyun sunucusundaki herhangi bir dosyayı (ör. config.yml'deki pepper) okuyabilirdi.
+                config.addDataSourceProperty("allowLocalInfile", "false");
                 warnIfDatabaseTrafficUnencrypted();
                 // MariaDB Connector/J 3.x her zaman utf8mb4 konuşur; ek encoding ayarı gerekmez.
                 config.addDataSourceProperty("cachePrepStmts", "true");

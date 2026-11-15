@@ -29,6 +29,16 @@ public interface AccountRepository {
 
     CompletableFuture<Boolean> delete(UUID uuid);
 
+    /**
+     * Online-mode'da Mojang isimleri yeniden kullanılabilir: ismini değiştiren eski bir oyuncunun
+     * satırı, aynı ismi yeni alan farklı UUID'li oyuncunun kaydını (unique isim indeksi yüzünden)
+     * engellerdi. Bu metot, {@code exceptUuid} dışındaki satırlarda o ismi benzersiz bir yer
+     * tutucuyla değiştirir; eski oyuncu tekrar girince adı {@code updateLastLogin} ile düzelir.
+     *
+     * @return ismi serbest bırakılan satır sayısı
+     */
+    CompletableFuture<Integer> releaseName(String playerName, UUID exceptUuid);
+
     /** Bu IP'den kayıt olmuş hesap sayısı (IP başına hesap limiti için). */
     CompletableFuture<Integer> countByRegistrationIp(String ip);
 }

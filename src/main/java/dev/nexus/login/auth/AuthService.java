@@ -18,12 +18,16 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Nullable;
@@ -69,6 +73,8 @@ public final class AuthService {
     private final AuthEffects effects;
     private final Messages messages;
     private final PackService pack;
+    /** Spawn'a ışınlanmadan önceki konum; çökmede kaybolmasın diye oyuncu verisine yazılır. */
+    private final NamespacedKey originKey;
     private volatile AuthSettings settings;
     private volatile PinPolicy pinPolicy;
     private volatile boolean premiumActive;
@@ -76,6 +82,8 @@ public final class AuthService {
     private @Nullable BukkitTask ticker;
     private int frame;
     private final java.util.List<Runnable> cleanupTasks = new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** IP → sürmekte olan kayıt sayısı. Yalnızca ana thread'den değiştirilir. */
+    private final java.util.Map<String, Integer> pendingRegistrations = new java.util.HashMap<>();
 
     public AuthService(Plugin plugin, AccountRepository accounts, PasswordHasher hasher, NexusExecutors executors,
                        SessionManager sessions, LoginThrottle throttle, AuthAudit audit, AuthEffects effects,
@@ -91,6 +99,7 @@ public final class AuthService {
         this.effects = effects;
         this.messages = messages;
         this.pack = pack;
+        this.originKey = new NamespacedKey(plugin, "origin");
         this.settings = settings;
         this.pinPolicy = new PinPolicy(settings.pinMinLength(), settings.pinMaxLength());
         this.premiumActive = settings.premiumAutoLogin() && Bukkit.getOnlineMode();
@@ -193,7 +202,13 @@ public final class AuthService {
         AuthSession session = sessions.create(player.getUniqueId(), ip, settings.timeout());
         // Hesap bilgisi gelmeden önce bile kısıtla: hiçbir tick boyunca açık kapı bırakma.
         session.restrictionSnapshot(effects.applyRestrictions(player));
-        session.originalLocation(player.getLocation());
+        // Önceki oturum spawn'a ışınlanmışken çöktüyse oyuncu şu an spawn'dadır; gerçek
+        // konum oyuncu verisindeki işaretten okunur, yoksa mevcut konum kullanılır.
+        Location crashOrigin = readOrigin(player);
+        session.originalLocation(crashOrigin != null ? crashOrigin : player.getLocation());
+        if (settings.teleportToSpawn() && settings.restorePreviousLocation()) {
+            writeOrigin(player, session.originalLocation());
+        }
         if (settings.hideInventory()) {
             ItemStack[] contents = player.getInventory().getContents().clone();
             // Yedek yazılamazsa envanteri TEMİZLEME: gizleme kozmetiktir, eşya kaybı değildir.
@@ -610,12 +625,16 @@ public final class AuthService {
     private void register(Player player, AuthSession session, PinMenu menu, char[] pin) {
         menu.busy(true);
         Account existing = session.account();
-        CompletableFuture<Integer> ipCount = existing != null || settings.maxAccountsPerIp() == 0
-                ? CompletableFuture.completedFuture(0)
-                : accounts.countByRegistrationIp(session.ip());
+        boolean limited = existing == null && settings.maxAccountsPerIp() > 0;
+        // DB sayımı ile INSERT arasında aynı IP'den eşzamanlı kayıtlar sınırı aşabilirdi:
+        // sürmekte olan kayıtlar da sayıma eklenir (ana thread'de artırılır/azaltılır).
+        int inFlight = limited ? pendingRegistrations.merge(session.ip(), 1, Integer::sum) - 1 : 0;
+        CompletableFuture<Integer> ipCount = limited
+                ? accounts.countByRegistrationIp(session.ip())
+                : CompletableFuture.completedFuture(0);
 
         ipCount.thenCompose(count -> {
-                    if (count >= settings.maxAccountsPerIp() && settings.maxAccountsPerIp() > 0) {
+                    if (limited && count + inFlight >= settings.maxAccountsPerIp()) {
                         throw new CompletionException(new IpLimitReached());
                     }
                     return hasher.hash(pin);
@@ -627,6 +646,9 @@ public final class AuthService {
                                 : CompletableFuture.failedFuture(new PinSaveFailed())))
                 .whenCompleteAsync((account, error) -> {
                     wipe(pin); // hasher zaten sildi; IP limiti gibi erken çıkışlarda da silindiğinden emin ol
+                    if (limited) {
+                        pendingRegistrations.computeIfPresent(session.ip(), (ip, n) -> n <= 1 ? null : n - 1);
+                    }
                     if (!isCurrent(player, session) || session.menu() != menu) {
                         return;
                     }
@@ -787,7 +809,8 @@ public final class AuthService {
     }
 
     private void restorePlayerState(Player player, AuthSession session) {
-        if (session.storedInventory() != null) {
+        boolean inventoryRestored = session.storedInventory() != null;
+        if (inventoryRestored) {
             player.getInventory().setContents(session.storedInventory());
             session.storedInventory(null);
         }
@@ -795,12 +818,50 @@ public final class AuthService {
             RestrictionListener.performInternalTeleport(player, session.originalLocation());
             session.originalLocation(null);
         }
+        player.getPersistentDataContainer().remove(originKey);
+        if (inventoryRestored) {
+            // Giriş ekranındayken bir otomatik kayıt BOŞ envanteri diske yazmış olabilir. Yedeği
+            // silmeden önce geri yüklenen envanteri kaydet; yoksa bir sonraki otomatik kayıttan
+            // önceki bir çökmede eşyalar kalıcı olarak kaybolurdu.
+            player.saveData();
+        }
         // Oturum bitiyor: yedek dosyası normalde yukarıda silindi. Silme daha önce başarısız
         // olduysa veya oturum zaten authenticated ise artık kalan dosya güncel değildir;
         // bir sonraki girişte eski envanteri geri yüklememesi için burada da temizlenir.
         deleteInventoryBackup(player);
         // Aynı snapshot'ın çıkışta ikinci kez uygulanmasını engelle.
         session.restrictionSnapshot(null);
+    }
+
+    /** "dünyaUUID;x;y;z;yaw;pitch" — dünya silinmiş/bozuksa {@code null}. */
+    private @Nullable Location readOrigin(Player player) {
+        String raw = player.getPersistentDataContainer().get(originKey, PersistentDataType.STRING);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            String[] parts = raw.split(";");
+            if (parts.length != 6) {
+                return null;
+            }
+            World world = Bukkit.getWorld(UUID.fromString(parts[0]));
+            if (world == null) {
+                return null;
+            }
+            return new Location(world, Double.parseDouble(parts[1]), Double.parseDouble(parts[2]),
+                    Double.parseDouble(parts[3]), Float.parseFloat(parts[4]), Float.parseFloat(parts[5]));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private void writeOrigin(Player player, @Nullable Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        player.getPersistentDataContainer().set(originKey, PersistentDataType.STRING,
+                location.getWorld().getUID() + ";" + location.getX() + ";" + location.getY() + ";"
+                        + location.getZ() + ";" + location.getYaw() + ";" + location.getPitch());
     }
 
     private Path inventoryBackupFile(Player player) {

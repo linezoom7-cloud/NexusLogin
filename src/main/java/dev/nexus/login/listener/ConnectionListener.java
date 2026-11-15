@@ -135,6 +135,16 @@ public final class ConnectionListener implements Listener {
                     return;
                 }
             }
+            if (Bukkit.getOnlineMode()) {
+                // Mojang ismi doğruladı: aynı ismi tutan başka UUID'li satır, ismini değiştirmiş
+                // eski bir oyuncuya aittir. Serbest bırakılmazsa unique isim indeksi bu oyuncunun
+                // kaydını ve son giriş güncellemesini kalıcı olarak başarısız kılardı.
+                int released = accounts.releaseName(name, event.getUniqueId())
+                        .get(DB_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (released > 0) {
+                    logger.info(() -> "Online-mode isim devri: '" + name + "' adı eski hesaptan serbest bırakıldı.");
+                }
+            }
             sessions.preload(event.getUniqueId(), byUuid.orElse(null));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
