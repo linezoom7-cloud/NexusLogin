@@ -38,6 +38,12 @@ public record SyncMessage(int keyId, long timestampMs, byte[] nonce, UUID player
         payload = payload.clone();
     }
 
+    /** Gönderilecek mesaj: şimdiki zaman ve yeni rastgele nonce ile. */
+    public static SyncMessage outgoing(UUID playerUuid, UUID connectionId, long epoch, long seq, Op op, byte[] payload) {
+        return new SyncMessage(0, System.currentTimeMillis(), SyncCodec.newNonce(), playerUuid, connectionId,
+                epoch, seq, op, payload);
+    }
+
     @Override
     public byte[] nonce() {
         return nonce.clone();
@@ -77,7 +83,7 @@ public record SyncMessage(int keyId, long timestampMs, byte[] nonce, UUID player
         AUTH_OK((byte) 2),
         /** Proxy → backend: oturum iptal. */
         REVOKE((byte) 3),
-        /** Proxy → backend: AUTHED durumunun süresini yenile. */
+        /** Ayrıldı, şu an kullanılmıyor: yenileme STATE(AUTHED) yeni expiresAt ile gönderilerek yapılır. */
         HEARTBEAT((byte) 4);
 
         final byte wire;
