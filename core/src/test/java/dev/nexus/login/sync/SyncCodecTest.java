@@ -129,7 +129,11 @@ class SyncCodecTest {
     @Test
     void payloadLimitAndToStringHidesSecrets() {
         assertThrows(IllegalArgumentException.class, () -> message(new byte[SyncCodec.MAX_PAYLOAD + 1]));
-        SyncMessage m = message(new byte[]{42});
-        assertFalse(m.toString().contains("42"), "payload toString'e girmemeli");
+        // Rastgele UUID'ler toString'de yer alır; o yüzden tek bir rakam değil, içeriğin kendisi aranır.
+        SyncMessage m = message("SECRET-PAYLOAD".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        String text = m.toString();
+        assertFalse(text.contains("SECRET-PAYLOAD"), "payload toString'e girmemeli");
+        assertFalse(text.toLowerCase().contains("payload") || text.contains("nonce"), "payload/nonce alanı yazılmamalı");
+        assertFalse(text.contains(java.util.HexFormat.of().formatHex(m.nonce())), "nonce yazılmamalı");
     }
 }
