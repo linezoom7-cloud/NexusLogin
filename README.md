@@ -80,7 +80,7 @@ Since 1.1.0 NexusLogin can protect a **single Velocity proxy** with several Pape
      enabled: true
      server-name: "auth"   # exactly the name in velocity.toml [servers]
    ```
-6. In Velocity's `config.properties`, list the auth servers (`auth-servers=auth`). Players go to the first available one; after login they are sent to `after-login-server` (or the first non-auth server in `try`).
+6. In Velocity's `config.properties`, list the auth servers (`auth-servers=auth`). Players go to the first one in that list; if it cannot be reached (down or crashed), the proxy tries the next one (since 1.2.1, NexusLogin-Velocity 1.2.1). A player that an auth server itself refuses (lockout, timeout) is not moved on; after login they are sent to `after-login-server` (or the first non-auth server in `try`).
 7. Restart everything and watch the logs: Paper prints `Velocity köprüsü aktif`, Velocity prints the auth servers. If a prerequisite is missing, the Paper server logs why and **stays in single-server mode** (local PIN on that server).
 
 Tested on Velocity 3.4.0, 3.5.1 and 4.3.1 (4.x needs Java 25) with Paper 1.21.11.
@@ -214,7 +214,7 @@ The PIN gate can only be as strong as the identity data it receives:
 
 ### Upgrade notes
 
-- **1.2.1:** no schema change. New optional `auth.pin.require-mixed-digits` (default `false`) and a longer list of rejected common PINs (both only for new PINs). Fresh installs get an automatic `pepper.key`; servers that already have accounts are not changed. In a Velocity network with a shared MariaDB, copy `pepper.key` (if one was created) to every server.
+- **1.2.1:** update **both** jars (NexusLogin-Velocity 1.2.1 adds failover to the next auth server). No schema change. New optional `auth.pin.require-mixed-digits` (default `false`) and a longer list of rejected common PINs (both only for new PINs). Fresh installs get an automatic `pepper.key`; servers that already have accounts are not changed. In a Velocity network with a shared MariaDB, copy `pepper.key` (if one was created) to every server.
 - **1.2.0:** database schema v3 adds the `nexus_totp` table (nothing else changes; the pre-upgrade backup runs as usual). To go back to 1.1.x: stop the server, run `UPDATE nexus_meta SET meta_value = '2' WHERE meta_key = 'schema_version';` and optionally `DROP TABLE nexus_totp;`, then start the old jar. New `two-factor:` section, off by default.
 - **1.2.0 (security):** lockouts now really keep doubling up to `max-lockout-minutes`. Before, from the 16-minute level onward the level dropped again right after each lock, so repeated attacks stayed at about 16-minute locks.
 

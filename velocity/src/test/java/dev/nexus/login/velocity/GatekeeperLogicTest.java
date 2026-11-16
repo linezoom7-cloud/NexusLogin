@@ -130,4 +130,16 @@ class GatekeeperLogicTest {
         upper.setProperty("allowed-commands", "Login, REG");
         assertEquals(Set.of("login", "reg"), ProxySettings.from(upper).allowedCommands());
     }
+
+    @Test
+    void unreachableAuthServerFallsThroughToTheNextInConfigOrder() {
+        Properties p = new Properties();
+        p.setProperty("auth-servers", "auth, auth2,auth3");
+        p.setProperty("auth-servers-share-database", "true");
+        Set<String> auth = ProxySettings.from(p).authServers();
+        assertEquals(java.util.Optional.of("auth2"), GateRules.nextAuthServer(auth, "auth"));
+        assertEquals(java.util.Optional.of("auth3"), GateRules.nextAuthServer(auth, "auth2"));
+        assertEquals(java.util.Optional.empty(), GateRules.nextAuthServer(auth, "auth3"), "başa dönmez (döngü yok)");
+        assertEquals(java.util.Optional.empty(), GateRules.nextAuthServer(auth, "lobby"));
+    }
 }

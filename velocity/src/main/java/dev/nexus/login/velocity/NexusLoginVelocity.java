@@ -170,6 +170,17 @@ public final class NexusLoginVelocity {
         if (ready() && states.isAuthed(event.getPlayer().getUniqueId())) {
             return;
         }
+        // İlk yerleşimde auth sunucusuna hiç bağlanılamadı (kapalı/çökmüş; sunucunun kendi mesajı yok):
+        // sıradaki auth sunucusunu dene. Sunucu kendisi reddettiyse (kilit, zaman aşımı) mesajı vardır ve
+        // bu yol KULLANILMAZ. (kickedDuringServerConnect ilk bağlantıda false döner; o yüzden bakılmaz.)
+        if (ready() && event.getServerKickReason().isEmpty() && event.getPlayer().getCurrentServer().isEmpty()) {
+            Optional<RegisteredServer> next = GateRules.nextAuthServer(settings.authServers(),
+                    event.getServer().getServerInfo().getName()).flatMap(proxy::getServer);
+            if (next.isPresent()) {
+                event.setResult(KickedFromServerEvent.RedirectPlayer.create(next.get()));
+                return;
+            }
+        }
         Component reason = event.getServerKickReason()
                 .orElse(Component.text(settings == null ? "Login server is not available." : settings.kickNoAuthServer()));
         event.setResult(KickedFromServerEvent.DisconnectPlayer.create(reason));

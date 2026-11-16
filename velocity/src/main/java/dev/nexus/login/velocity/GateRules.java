@@ -22,6 +22,21 @@ final class GateRules {
     }
 
     /**
+     * İlk bağlantıda {@code failed} auth sunucusuna ulaşılamadıysa denenecek sıradaki auth sunucusu
+     * (config sırasına göre, başa dönmeden; böylece döngü olmaz).
+     */
+    static java.util.Optional<String> nextAuthServer(Set<String> authServers, String failed) {
+        boolean seen = false;
+        for (String name : authServers) {
+            if (seen) {
+                return java.util.Optional.of(name);
+            }
+            seen = name.equals(failed);
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
      * Velocity komutu baştaki "/" olmadan verir; başa boşluk eklenerek çalıştırılabildiği için
      * normalize edilir. Namespace ("x:login") soyulmaz: yalnızca listede tam olarak geçen ad geçer.
      */
