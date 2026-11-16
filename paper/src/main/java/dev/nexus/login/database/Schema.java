@@ -13,7 +13,7 @@ public final class Schema {
      * değeriyle karşılaştırılır. Tablo yapısı değiştiğinde bu sayı artırılmalı ve
      * {@code DatabaseManager.applyMigrations} içine ilgili adım eklenmelidir.
      */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     /** {@code nexus_meta} tablosunda şema sürümünün tutulduğu anahtar. */
     public static final String VERSION_KEY = "schema_version";
@@ -53,6 +53,15 @@ public final class Schema {
                         block_count   INTEGER     NOT NULL DEFAULT 0,
                         updated_at    BIGINT      NOT NULL
                     )
+                    """,
+                    // v3: iki adımlı doğrulama. Satır varsa 2FA etkindir (yarım kayıt DB'ye yazılmaz).
+                    """
+                    CREATE TABLE IF NOT EXISTS nexus_totp (
+                        uuid          CHAR(36)     PRIMARY KEY,
+                        secret_enc    VARCHAR(160) NOT NULL,
+                        last_step     BIGINT       NOT NULL DEFAULT 0,
+                        created_at    BIGINT       NOT NULL
+                    )
                     """
             );
             case MARIADB -> List.of(
@@ -87,6 +96,16 @@ public final class Schema {
                         updated_at    BIGINT      NOT NULL,
                         PRIMARY KEY (attempt_key),
                         KEY idx_nexus_attempts_updated (updated_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """,
+                    // v3: iki adımlı doğrulama. Satır varsa 2FA etkindir (yarım kayıt DB'ye yazılmaz).
+                    """
+                    CREATE TABLE IF NOT EXISTS nexus_totp (
+                        uuid          CHAR(36)     NOT NULL,
+                        secret_enc    VARCHAR(160) NOT NULL,
+                        last_step     BIGINT       NOT NULL DEFAULT 0,
+                        created_at    BIGINT       NOT NULL,
+                        PRIMARY KEY (uuid)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     """
             );

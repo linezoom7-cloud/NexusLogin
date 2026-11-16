@@ -110,7 +110,7 @@ class MariaDbMigrationIntegrationTest {
     }
 
     @Test
-    void freshDatabaseGetsSchemaV2WithUniqueName() throws Exception {
+    void freshDatabaseGetsCurrentSchemaWithUniqueName() throws Exception {
         manager = start();
         try (Connection c = raw(); Statement s = c.createStatement()) {
             assertEquals(Schema.VERSION, version(s));
@@ -157,6 +157,35 @@ class MariaDbMigrationIntegrationTest {
         try (Connection c = raw(); Statement s = c.createStatement()) {
             assertEquals(Schema.VERSION, version(s));
             assertEquals(4, count(s, "nexus_accounts_backup_v1"));
+        }
+    }
+
+    @Test
+    void totpStepIsConsumedExactlyOnceUnderParallelConnections() throws Exception {
+        manager = start();
+        try (Connection c = raw(); Statement s = c.createStatement()) {
+            assertEquals(Schema.VERSION, version(s));
+            assertTrue(uniqueIndexes(s, "nexus_totp").contains("PRIMARY:uuid"));
+        }
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            dev.nexus.login.totp.TotpRepository repo = new dev.nexus.login.totp.TotpRepository(manager, pool);
+            UUID uuid = UUID.randomUUID();
+            assertTrue(repo.insert(uuid, "v1$test", 100, 1L).join());
+            assertFalse(repo.insert(uuid, "v1$other", 0, 2L).join(), "ikinci kayıt mevcut satırı ezmez");
+            for (long step = 101; step <= 105; step++) {
+                long st = step;
+                var futures = new ArrayList<java.util.concurrent.CompletableFuture<Boolean>>();
+                for (int i = 0; i < 8; i++) {
+                    futures.add(repo.acceptStep(uuid, st));
+                }
+                long accepted = futures.stream().map(java.util.concurrent.CompletableFuture::join).filter(b -> b).count();
+                assertEquals(1, accepted, "adım " + st + " paralel bağlantılarda tam bir kez kabul edilmeli");
+            }
+            assertFalse(repo.acceptStep(uuid, 104).join(), "eski adım reddedilir");
+            assertEquals(105, repo.find(uuid).join().orElseThrow().lastStep());
+        } finally {
+            pool.shutdownNow();
         }
     }
 

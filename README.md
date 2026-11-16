@@ -16,7 +16,7 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 | **Concurrency / TPS** | Heavy synchronous / blocking queries | **Java 21 Virtual Threads (Zero TPS loss)** |
 | **Resource Pack** | Requires ItemsAdder / Oraxen / external host | **Self-contained (Procedural Java 2D + Built-in HTTP)** |
 | **Multi-Language** | Clunky manual editing | **Instant English (`en`) & Turkish (`tr`) switcher** |
-| **Memory Footprint** | Bloated fat JAR (~10 MB) | **Lightweight (~270 KB JAR)** |
+| **Memory Footprint** | Bloated fat JAR (~10 MB) | **Lightweight (~300 KB JAR)** |
 
 ---
 
@@ -93,6 +93,33 @@ Tested on Velocity 3.4.0, 3.5.1 and 4.3.1 (4.x needs Java 25) with Paper 1.21.11
 - **Single proxy only.** Several proxies, Redis and limbo servers are not supported yet.
 - **Premium auto-login** behind a proxy uses only the proxy's signed online-mode result; this path has not been tested with real Microsoft accounts.
 - Join/leave messages appear on each backend separately, and a non-auth server briefly applies the login restrictions (and spawn teleport) until the proxy's state arrives.
+
+---
+
+## 🔐 Two-factor authentication (TOTP)
+
+Since 1.2.0 players can add an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis, 2FAS, Bitwarden…) as a second step after the PIN. **Off by default.**
+
+```yaml
+two-factor:
+  enabled: true
+  issuer: "NexusLogin"   # name shown in the app; no ':'
+```
+
+- **Set up:** a logged-in player runs `/2fa` (alias `/totp`). The menu shows a 32-character key; the player adds it in the app as *manual entry* (time-based, 6 digits, 30 s) and types the code it shows. Nothing is stored until that first valid code. `/2fa` again turns it off with a current code.
+- **Login:** after the PIN, the keypad asks for the 6-digit code. Codes are typed on the keypad, never in chat or commands.
+- **Required for staff:** players with `nexuslogin.2fa.required` (give it with your permission plugin) must set up 2FA before they can play and cannot turn it off.
+- **Lost phone:** run `nexus 2fa-reset <player>` from the **server console**. It is refused in-game, even for OPs, so a hijacked admin account cannot strip someone else's 2FA. `/nexus unregister` also removes 2FA.
+
+How it is protected:
+
+- Wrong codes count against the **same** brute-force counter as wrong PINs, and a correct PIN does **not** reset that counter for 2FA accounts; only a full login (PIN + code) does. Otherwise someone who knows a PIN could reconnect forever and keep guessing codes.
+- Every code works once: the last used 30-second step is stored and updated atomically, so the same code cannot be accepted twice, not even by two servers sharing the database.
+- Secrets are encrypted with AES-256-GCM. The key lives in `plugins/NexusLogin/totp.key` (created on first start) or in the `NEXUSLOGIN_TOTP_KEY` environment variable (base64, 32 bytes), never in `config.yml`. A leaked database alone does not reveal the secrets. **Back up the key separately from the database: if it is lost, every 2FA setup is unusable** (reset players from the console). If 2FA accounts exist and the key is missing, the plugin does not create a new one; those players are refused with a clear message and everyone else can still log in.
+- Turning `enabled` off disables 2FA for everyone who set it up; the server warns about this on startup.
+- Velocity network: the code is checked on the auth server and the proxy lets the player through only after it. Players run `/2fa` on the lobby, so **every server must use the same MariaDB database and the same `totp.key`**.
+- Keep the server clock synced (NTP); codes are accepted for ±1 step (±30 s).
+- Not included yet: recovery codes and QR codes. A player who loses the phone needs a console reset.
 
 ---
 
@@ -179,6 +206,9 @@ The PIN gate can only be as strong as the identity data it receives:
 
 ### Upgrade notes
 
+- **1.2.0:** database schema v3 adds the `nexus_totp` table (nothing else changes; the pre-upgrade backup runs as usual). To go back to 1.1.x: stop the server, run `UPDATE nexus_meta SET meta_value = '2' WHERE meta_key = 'schema_version';` and optionally `DROP TABLE nexus_totp;`, then start the old jar. New `two-factor:` section, off by default.
+- **1.2.0 (security):** lockouts now really keep doubling up to `max-lockout-minutes`. Before, from the 16-minute level onward the level dropped again right after each lock, so repeated attacks stayed at about 16-minute locks.
+
 - **1.1.0:** new `velocity:` section in `config.yml`, off by default; configs without it keep working in single-server mode. No database schema change. When building from source the jar is now in `paper/build/libs/`.
 
 - **1.0.4:** `auth.teleport-to-spawn` now defaults to `true` (also for configs that do not contain the key). Players are teleported to spawn while on the login screen and returned to their previous location after login. Set `teleport-to-spawn: false` to keep the old behaviour.
@@ -242,6 +272,8 @@ The database schema version is stored in a small `nexus_meta` table. Missing tab
 | `/nexus unlock <player>` | - | Clear a brute-force lockout without deleting the account | `nexuslogin.admin` |
 | `/nexus unlockip <ip>` | - | Clear a brute-force penalty for a specific IP address | `nexuslogin.admin` |
 | `/nexus forcelogin <player>` | - | Bypass PIN and authenticate player | `nexuslogin.admin` |
+| `/2fa` | `/totp` | Set up or turn off two-factor authentication | *Default* |
+| `nexus 2fa-reset <player>` | - | Remove a player's 2FA (**console only**) | console |
 | `/nexus reload` | - | Reload configuration & language files | `nexuslogin.admin` |
 
 ### What `/nexus reload` actually reloads

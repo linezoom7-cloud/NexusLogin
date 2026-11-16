@@ -17,7 +17,8 @@ public record PluginSettings(
         PackSettings pack,
         AuditSettings audit,
         BrandingSettings branding,
-        VelocityBridgeSettings velocity
+        VelocityBridgeSettings velocity,
+        TwoFactorSettings twoFactor
 ) {
 
     public PluginSettings {
@@ -28,6 +29,7 @@ public record PluginSettings(
         Objects.requireNonNull(audit, "audit");
         Objects.requireNonNull(branding, "branding");
         Objects.requireNonNull(velocity, "velocity");
+        Objects.requireNonNull(twoFactor, "twoFactor");
     }
 
     /**
@@ -42,7 +44,8 @@ public record PluginSettings(
                 // Eski config dosyalarında bu bölümler yok; varsayılanlarla devam et.
                 AuditSettings.from(config.getConfigurationSection("security.audit")),
                 BrandingSettings.from(config.getConfigurationSection("branding")),
-                VelocityBridgeSettings.from(config.getConfigurationSection("velocity"))
+                VelocityBridgeSettings.from(config.getConfigurationSection("velocity")),
+                TwoFactorSettings.from(config.getConfigurationSection("two-factor"))
         );
     }
 

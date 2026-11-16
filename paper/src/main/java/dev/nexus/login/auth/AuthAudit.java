@@ -91,6 +91,15 @@ public final class AuthAudit implements AutoCloseable {
                 "attempts=" + attempts + "/" + threshold);
     }
 
+    /** Yanlış veya tekrar kullanılmış 2FA kodu; kod ve secret asla yazılmaz. */
+    public void twoFactorFailure(String name, UUID uuid, String ip, int attempts, int threshold) {
+        write("2FA_FAIL",
+                "name=" + safe(name),
+                "uuid=" + safe(uuid),
+                "ip=" + safe(ip),
+                "attempts=" + attempts + "/" + threshold);
+    }
+
     public void loginSuccess(String name, UUID uuid, String ip, String kind) {
         write("LOGIN_OK",
                 "name=" + safe(name),

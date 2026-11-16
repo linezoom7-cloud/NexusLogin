@@ -42,6 +42,8 @@ public final class PinMenu implements InventoryHolder {
      * hane şartı koyduğundan, bu değerin altında kayıtlı bir PIN olamaz.
      */
     private static final int LEGACY_MIN_LENGTH = 4;
+    /** 2FA kodu (RFC 6238, 6 hane). */
+    public static final int CODE_LENGTH = 6;
 
     private final Messages messages;
     private final boolean styled;
@@ -55,6 +57,7 @@ public final class PinMenu implements InventoryHolder {
     private char @Nullable [] firstEntry;
     private boolean busy;
     private @Nullable Component notice;
+    private String hint = "";
 
     public PinMenu(Messages messages, PinMenuMode mode, boolean styled, int minLength, int maxLength) {
         this.messages = messages;
@@ -92,7 +95,7 @@ public final class PinMenu implements InventoryHolder {
     public Carry carry() {
         return new Carry(mode, Arrays.copyOf(buffer, length),
                 firstEntry == null ? null : Arrays.copyOf(firstEntry, firstEntry.length),
-                busy, notice);
+                busy, notice, hint);
     }
 
     public void restore(Carry carry) {
@@ -107,6 +110,7 @@ public final class PinMenu implements InventoryHolder {
         this.firstEntry = carry.firstEntry() == null ? null : Arrays.copyOf(carry.firstEntry(), carry.firstEntry().length);
         this.busy = carry.busy();
         this.notice = carry.notice();
+        this.hint = carry.hint();
         // Kopyalar menüye alındı; PIN parçalarını taşıyan geçici Carry dizilerini sil.
         Arrays.fill(carry.input(), '\0');
         if (carry.firstEntry() != null) {
@@ -116,7 +120,7 @@ public final class PinMenu implements InventoryHolder {
     }
 
     public record Carry(PinMenuMode mode, char[] input, char @Nullable [] firstEntry, boolean busy,
-                         @Nullable Component notice) {
+                         @Nullable Component notice, String hint) {
     }
 
     public void mode(PinMenuMode newMode) {
@@ -149,6 +153,7 @@ public final class PinMenu implements InventoryHolder {
         return switch (mode) {
             case LOGIN, CHANGE_CURRENT -> Math.min(minLength, LEGACY_MIN_LENGTH);
             case REGISTER, REGISTER_CONFIRM, CHANGE_NEW, CHANGE_CONFIRM -> minLength;
+            case TOTP_VERIFY, TOTP_ENROLL_GATE, TOTP_ENROLL, TOTP_DISABLE -> CODE_LENGTH;
         };
     }
 
@@ -166,12 +171,25 @@ public final class PinMenu implements InventoryHolder {
         return switch (mode) {
             case LOGIN, CHANGE_CURRENT -> AuthSettings.PIN_HARD_MAX;
             case REGISTER, REGISTER_CONFIRM, CHANGE_NEW, CHANGE_CONFIRM -> maxLength;
+            case TOTP_VERIFY, TOTP_ENROLL_GATE, TOTP_ENROLL, TOTP_DISABLE -> CODE_LENGTH;
         };
     }
 
     /** Gösterge satırındaki nokta sayısı: yapılandırılmış genişlik, girilen hane ile büyür. */
     private int displayCount() {
+        if (mode.isCode()) {
+            return CODE_LENGTH;
+        }
         return Math.min(AuthSettings.PIN_HARD_MAX, Math.max(maxLength, length));
+    }
+
+    /**
+     * Bilgi öğesinde gösterilecek ek metin (2FA kurulumunda secret). Yalnızca bu oyuncunun
+     * envanter paketine gider; chat, komut veya log olayı üretmez.
+     */
+    public void hint(String value) {
+        this.hint = value == null ? "" : value;
+        render();
     }
 
     // ── tampon ──
@@ -234,6 +252,7 @@ public final class PinMenu implements InventoryHolder {
         Arrays.fill(buffer, '\0');
         length = 0;
         firstEntry(null);
+        hint = "";
     }
 
     // ── çizim ──
@@ -325,7 +344,8 @@ public final class PinMenu implements InventoryHolder {
         TagResolver placeholders = TagResolver.resolver(
                 Placeholder.unparsed("length", String.valueOf(length)),
                 Placeholder.unparsed("min", String.valueOf(submitMinimum())),
-                Placeholder.unparsed("max", String.valueOf(maxEntry())));
+                Placeholder.unparsed("max", String.valueOf(maxEntry())),
+                Placeholder.unparsed("secret", hint));
         Material icon = mode.isGate() ? Material.NETHER_STAR : Material.TRIAL_KEY;
         Component name = messages.get(mode.messageKey() + ".name", placeholders);
         List<Component> lore = messages.list(mode.messageKey() + ".lore", placeholders);

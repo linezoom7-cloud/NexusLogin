@@ -21,6 +21,9 @@ commands:
   pin:
     description: PIN kodunu değiştirir.
     aliases: [pindegistir, changepin]
+  2fa:
+    description: İki adımlı doğrulamayı açar/kapatır.
+    aliases: [totp]
   nexus:
     description: Nexus Login yönetim komutları.
     permission: nexuslogin.admin
@@ -29,3 +32,6 @@ permissions:
   nexuslogin.admin:
     description: /nexus yönetim komutları.
     default: op
+  nexuslogin.2fa.required:
+    description: İki adımlı doğrulama zorunlu (kurmadan giriş yapılamaz, kapatılamaz).
+    default: false

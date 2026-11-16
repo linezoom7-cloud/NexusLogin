@@ -43,6 +43,17 @@ pin:
   internal-error: "<danger>Bir hata oluştu, lütfen tekrar dene.</danger>"
   changed: "<prefix> <success>PIN kodun güncellendi.</success>"
 
+2fa:
+  wrong: "<danger>Kod yanlış.</danger> <muted>Kalan deneme:</muted> <glow><remaining></glow>"
+  replayed: "<danger>Bu kod zaten kullanıldı.</danger> <muted>Sıradakini bekle. Kalan deneme:</muted> <glow><remaining></glow>"
+  enroll-wrong: "<danger>Kod uyuşmuyor.</danger> <muted>Uygulamadaki anahtarı ve telefonunun saatini kontrol et.</muted>"
+  enroll-expired: "<danger>Kurulum süresi doldu.</danger> <muted>Yeni bir anahtar üretildi; tekrar ekle.</muted>"
+  wait-next: "<danger>Bu kod az önce kullanıldı.</danger> <muted>Sıradaki kodu bekle (en fazla 30 sn).</muted>"
+  enabled: "<prefix> <success>İki adımlı doğrulama AÇIK.</success> <muted>Bundan sonra PIN'den sonra kod sorulacak.</muted>"
+  disabled: "<prefix> <success>İki adımlı doğrulama KAPALI.</success>"
+  server-off: "<prefix> <danger>Bu sunucuda iki adımlı doğrulama açık değil.</danger>"
+  required-cannot-disable: "<prefix> <danger>Rütben için iki adımlı doğrulama zorunlu, kapatılamaz.</danger>"
+
 menu:
   title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Kilidi"
   mode:
@@ -77,6 +88,34 @@ menu:
       name: "<volt><bold>PIN Değiştir</bold></volt> <muted>• adım 3/3</muted>"
       lore:
         - "<muted>Yeni PIN'i tekrar gir.</muted>"
+    totp-verify:
+      name: "<glow><bold>Doğrulama Kodu</bold></glow> <muted>• adım 2/2</muted>"
+      lore:
+        - "<muted>Doğrulayıcı uygulamandaki 6 haneli kodu gir.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Girilen:</muted> <glow><length></glow><muted>/6</muted>"
+    totp-enroll-gate:
+      name: "<neon><bold>2FA Kurulumu</bold></neon> <muted>• zorunlu</muted>"
+      lore:
+        - "<muted>Rütben için iki adımlı doğrulama zorunlu.</muted>"
+        - "<muted>Bu anahtarı doğrulayıcı uygulamaya elle ekle:</muted>"
+        - "<glow><secret></glow>"
+        - "<muted>Tür: zaman tabanlı, 6 hane, 30 sn.</muted>"
+        - ""
+        - "<muted>Sonra uygulamanın gösterdiği 6 haneli kodu gir.</muted>"
+    totp-enroll:
+      name: "<neon><bold>2FA Kurulumu</bold></neon>"
+      lore:
+        - "<muted>Bu anahtarı doğrulayıcı uygulamaya elle ekle:</muted>"
+        - "<glow><secret></glow>"
+        - "<muted>Tür: zaman tabanlı, 6 hane, 30 sn.</muted>"
+        - "<danger>Bu anahtarı yayında veya ekran görüntüsünde gösterme.</danger>"
+        - ""
+        - "<muted>Sonra gösterdiği 6 haneli kodu gir. İptal için kapat.</muted>"
+    totp-disable:
+      name: "<volt><bold>2FA'yı Kapat</bold></volt>"
+      lore:
+        - "<muted>Kapatmak için uygulamandaki güncel kodu gir.</muted>"
   busy:
     name: "<volt><bold>Doğrulanıyor…</bold></volt>"
     lore:
@@ -174,6 +213,13 @@ kick:
     <muted>Proxy girişini onaylamayı bıraktı.</muted>
     <glow>Yeniden bağlan.</glow>
 
+  2fa-unavailable: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>İKİ ADIMLI DOĞRULAMA KULLANILAMIYOR</bold></gradient>
+
+    <muted>Hesabın iki adımlı doğrulama kullanıyor,</muted>
+    <muted>ama sunucu şu an kodları doğrulayamıyor.</muted>
+    <glow>Lütfen bir yöneticiye haber ver.</glow>
+
   internal: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>BEKLENMEYEN BİR HATA OLUŞTU</bold></gradient>
 
@@ -194,6 +240,7 @@ command:
       - "<dark_gray>•</dark_gray> <neon>/nexus unlock [oyuncu]</neon> <muted>— kaba kuvvet kilidini aç (hesap silinmez)</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus unlockip [ip]</neon> <muted>— bir IP'nin kaba kuvvet cezasını temizle</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [oyuncu]</neon> <muted>— PIN sormadan giriş yaptır</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus 2fa-reset [oyuncu]</neon> <muted>— oyuncunun 2FA'sını kaldır (yalnız konsol)</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— yapılandırmayı ve dili yeniden yükle</muted>"
     reloaded: "<prefix> <success>Yapılandırma ve mesajlar yeniden yüklendi.</success>"
     reloaded-restart: "<prefix> <success>Yapılandırma yeniden yüklendi.</success> <muted>Veritabanı, hash, kaynak paketi, marka (paket görseli) ve denetim günlüğü değişiklikleri için sunucuyu yeniden başlatın.</muted>"
@@ -202,6 +249,9 @@ command:
     delete-failed: "<prefix> <danger><player> hesabı silinemedi. Konsolu kontrol edin.</danger>"
     not-found: "<prefix> <danger><player> adında kayıtlı hesap yok.</danger>"
     not-online: "<prefix> <danger><player> şu an oyunda değil.</danger>"
+    2fa-reset: "<prefix> <success><player> için iki adımlı doğrulama kaldırıldı.</success>"
+    2fa-none: "<prefix> <muted><player> iki adımlı doğrulama kullanmıyor.</muted>"
+    console-only: "<prefix> <danger>Bu komut yalnızca sunucu konsolundan çalıştırılabilir.</danger>"
     error: "<prefix> <danger>İşlem başarısız: <error></danger>"
     info:
       - "<prefix> <glow><player></glow> <muted>hesabı</muted>"

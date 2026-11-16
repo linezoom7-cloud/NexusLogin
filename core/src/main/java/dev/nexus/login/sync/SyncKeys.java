@@ -1,8 +1,5 @@
 package dev.nexus.login.sync;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Collections;
@@ -21,7 +18,6 @@ import java.util.Optional;
 public final class SyncKeys {
 
     public static final int MIN_KEY_BYTES = 32;
-    private static final String HMAC = "HmacSHA256";
 
     private final int activeKeyId;
     /** keyId -> yön -> türetilmiş HMAC anahtarı. */
@@ -104,32 +100,7 @@ public final class SyncKeys {
         return perDirection == null ? Optional.empty() : Optional.of(perDirection.get(direction));
     }
 
-    /**
-     * RFC 5869 HKDF-Expand (HMAC-SHA256). Ana anahtar zaten düzgün dağılımlı rastgele olduğundan
-     * Extract adımı atlanır (RFC 5869 §3.3); PRK olarak doğrudan kullanılır.
-     */
     static byte[] hkdfExpand(byte[] prk, byte[] info, int length) {
-        if (length < 1 || length > 255 * 32) {
-            throw new IllegalArgumentException("HKDF uzunluğu geçersiz: " + length);
-        }
-        try {
-            Mac mac = Mac.getInstance(HMAC);
-            mac.init(new SecretKeySpec(prk, HMAC));
-            byte[] out = new byte[length];
-            byte[] previous = new byte[0];
-            int offset = 0;
-            for (int counter = 1; offset < length; counter++) {
-                mac.update(previous);
-                mac.update(info);
-                mac.update((byte) counter);
-                previous = mac.doFinal();
-                int n = Math.min(previous.length, length - offset);
-                System.arraycopy(previous, 0, out, offset, n);
-                offset += n;
-            }
-            return out;
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("HmacSHA256 kullanılamıyor", e);
-        }
+        return dev.nexus.login.crypto.Hkdf.expand(prk, info, length);
     }
 }

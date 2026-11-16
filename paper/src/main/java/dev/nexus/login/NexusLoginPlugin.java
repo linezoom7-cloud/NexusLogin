@@ -131,6 +131,9 @@ public final class NexusLoginPlugin extends JavaPlugin {
         PlayerCommands playerCommands = new PlayerCommands(auth, sessions, messages);
         command("giris").setExecutor(playerCommands);
         command("pin").setExecutor(playerCommands);
+        command("2fa").setExecutor(playerCommands);
+        dev.nexus.login.totp.TotpRepository totpRepository =
+                new dev.nexus.login.totp.TotpRepository(database, executors.io());
 
         if (adminCommand != null) {
             adminCommand.bind(accounts, auth, sessions, executors, messages, audit);
@@ -158,6 +161,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 .thenCompose(v -> hasher.benchmark())
                 .thenAccept(duration -> getLogger().info(() -> "Argon2id hazır — tek hash "
                         + duration.toMillis() + " ms (hedef: 200-500 ms)."))
+                .thenCompose(v -> setupTwoFactor(settings, totpRepository))
                 .thenCombine(packReady, (a, b) -> (Void) null)
                 .whenCompleteAsync((v, error) -> {
                     if (error != null) {
@@ -224,6 +228,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 || !previous.pack().equals(updated.pack())
                 || !previous.audit().equals(updated.audit())
                 || !previous.velocity().equals(updated.velocity())
+                || !previous.twoFactor().equals(updated.twoFactor())
                 // Menü/mesaj markası canlı uygulanır; kaynak paketinin GÖRSELİ ise açılışta
                 // üretildiği için tam etki ancak yeniden başlatmayla alınır.
                 || !previous.branding().equals(updated.branding());
@@ -320,6 +325,52 @@ public final class NexusLoginPlugin extends JavaPlugin {
         bridge.register();
         auth.proxyLink(bridge);
         getLogger().info("Velocity köprüsü aktif (sunucu adı: " + settings.velocity().serverName() + ").");
+    }
+
+    /**
+     * two-factor.enabled ise anahtarı yükler. Anahtar yoksa ve hiç 2FA kaydı yoksa üretilir. Kayıtlar
+     * varken anahtar yoksa yeni anahtar ÜRETİLMEZ (tüm kayıtlar çöpe giderdi): 2FA'lı hesaplar girişte
+     * reddedilir, diğerleri etkilenmez (fail-closed).
+     */
+    private CompletableFuture<Void> setupTwoFactor(PluginSettings settings, dev.nexus.login.totp.TotpRepository repository) {
+        if (!settings.twoFactor().enabled()) {
+            // Kapatmak, kurulmuş 2FA'ları da devre dışı bırakır: sessiz bir koruma kaybı olmasın.
+            return repository.isEmpty().thenAccept(empty -> {
+                if (!empty) {
+                    getLogger().warning("two-factor.enabled=false ama 2FA kurmuş hesaplar var: bu hesaplar şu an "
+                            + "YALNIZCA PIN ile giriyor. Bilerek kapatmadıysanız two-factor.enabled: true yapın.");
+                }
+            });
+        }
+        java.nio.file.Path folder = getDataFolder().toPath();
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        return repository.isEmpty().thenAcceptAsync(empty -> {
+            byte[] key;
+            try {
+                key = dev.nexus.login.totp.TotpKeyFile.load(folder, System.getenv(dev.nexus.login.totp.TotpKeyFile.ENV));
+                if (key == null && empty) {
+                    key = dev.nexus.login.totp.TotpKeyFile.generate(folder, random);
+                    getLogger().warning("Yeni TOTP anahtarı üretildi: " + folder.resolve(dev.nexus.login.totp.TotpKeyFile.FILE)
+                            + ". Kaybolursa tüm 2FA kayıtları kullanılamaz; veritabanından AYRI bir yere yedekleyin.");
+                }
+            } catch (java.io.IOException e) {
+                getLogger().log(Level.SEVERE, "TOTP anahtarı okunamadı; 2FA'lı hesaplar giriş yapamayacak.", e);
+                key = null;
+            }
+            dev.nexus.login.totp.TotpVault vault = null;
+            if (key != null) {
+                vault = new dev.nexus.login.totp.TotpVault(key, random);
+                java.util.Arrays.fill(key, (byte) 0);
+            } else {
+                getLogger().severe("two-factor açık, 2FA kayıtları var ama TOTP anahtarı yok ("
+                        + dev.nexus.login.totp.TotpKeyFile.ENV + " / totp.key). 2FA'lı hesaplar giriş yapamayacak.");
+            }
+            dev.nexus.login.totp.TwoFactorService service =
+                    new dev.nexus.login.totp.TwoFactorService(repository, vault, random, System::currentTimeMillis);
+            auth.twoFactor(service);
+            auth.registerCleanupTask(service::purgeExpired);
+            getLogger().info("İki adımlı doğrulama aktif" + (vault == null ? " (anahtar YOK, fail-closed)." : "."));
+        }, executors.mainThread());
     }
 
     /** Paket hatası eklentiyi durdurmaz: menü cam panelli yedek tasarımla çalışmaya devam eder. */

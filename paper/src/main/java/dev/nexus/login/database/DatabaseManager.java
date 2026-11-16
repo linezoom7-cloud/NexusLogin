@@ -232,6 +232,8 @@ public final class DatabaseManager implements AutoCloseable {
             dedupeAccountNames(connection);
             createUniqueNameIndex(connection);
         }
+        // v3 (nexus_totp) yalnızca yeni tablo ekler; Schema.statements her açılışta oluşturur, veri dönüşümü yok.
+        // Eski sürüme dönüş: nexus_meta schema_version=2 yapılır, nexus_totp yok sayılır (README).
     }
 
     /**

@@ -43,6 +43,17 @@ pin:
   internal-error: "<danger>An internal error occurred, please try again.</danger>"
   changed: "<prefix> <success>Your PIN code has been updated.</success>"
 
+2fa:
+  wrong: "<danger>Incorrect code.</danger> <muted>Attempts left:</muted> <glow><remaining></glow>"
+  replayed: "<danger>This code was already used.</danger> <muted>Wait for the next one. Attempts left:</muted> <glow><remaining></glow>"
+  enroll-wrong: "<danger>That code does not match.</danger> <muted>Check the key in your app and the time on your phone.</muted>"
+  enroll-expired: "<danger>Setup timed out.</danger> <muted>A new key was generated; add it again.</muted>"
+  wait-next: "<danger>This code was just used.</danger> <muted>Wait for the next code (up to 30 s).</muted>"
+  enabled: "<prefix> <success>Two-factor authentication is now ON.</success> <muted>You will be asked for a code after your PIN.</muted>"
+  disabled: "<prefix> <success>Two-factor authentication is now OFF.</success>"
+  server-off: "<prefix> <danger>Two-factor authentication is not enabled on this server.</danger>"
+  required-cannot-disable: "<prefix> <danger>Two-factor authentication is required for your rank and cannot be turned off.</danger>"
+
 menu:
   title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Lock"
   mode:
@@ -77,6 +88,34 @@ menu:
       name: "<volt><bold>Change PIN</bold></volt> <muted>• step 3/3</muted>"
       lore:
         - "<muted>Re-enter the new PIN to confirm.</muted>"
+    totp-verify:
+      name: "<glow><bold>Authenticator Code</bold></glow> <muted>• step 2/2</muted>"
+      lore:
+        - "<muted>Enter the 6-digit code from your authenticator app.</muted>"
+        - ""
+        - "<neon>●</neon> <muted>Entered:</muted> <glow><length></glow><muted>/6</muted>"
+    totp-enroll-gate:
+      name: "<neon><bold>Set Up 2FA</bold></neon> <muted>• required</muted>"
+      lore:
+        - "<muted>Your rank requires two-factor authentication.</muted>"
+        - "<muted>Add this key in an authenticator app (manual entry):</muted>"
+        - "<glow><secret></glow>"
+        - "<muted>Type: time-based, 6 digits, 30 s.</muted>"
+        - ""
+        - "<muted>Then enter the 6-digit code it shows.</muted>"
+    totp-enroll:
+      name: "<neon><bold>Set Up 2FA</bold></neon>"
+      lore:
+        - "<muted>Add this key in an authenticator app (manual entry):</muted>"
+        - "<glow><secret></glow>"
+        - "<muted>Type: time-based, 6 digits, 30 s.</muted>"
+        - "<danger>Do not show this key on stream or in screenshots.</danger>"
+        - ""
+        - "<muted>Then enter the 6-digit code it shows. Close to cancel.</muted>"
+    totp-disable:
+      name: "<volt><bold>Turn Off 2FA</bold></volt>"
+      lore:
+        - "<muted>Enter a current code from your app to turn it off.</muted>"
   busy:
     name: "<volt><bold>Verifying…</bold></volt>"
     lore:
@@ -175,6 +214,13 @@ kick:
     <muted>The proxy stopped confirming your login.</muted>
     <glow>Please reconnect.</glow>
 
+  2fa-unavailable: |-
+    <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>TWO-FACTOR UNAVAILABLE</bold></gradient>
+
+    <muted>Your account uses two-factor authentication,</muted>
+    <muted>but the server cannot verify codes right now.</muted>
+    <glow>Please contact an administrator.</glow>
+
   internal: |-
     <danger>✖</danger> <gradient:#f472b6:#a855f7><bold>AN UNEXPECTED ERROR OCCURRED</bold></gradient>
 
@@ -195,6 +241,7 @@ command:
       - "<dark_gray>•</dark_gray> <neon>/nexus unlock [player]</neon> <muted>— clear brute-force lockout (keeps account)</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus unlockip [ip]</neon> <muted>— clear a brute-force penalty for an IP</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus forcelogin [player]</neon> <muted>— bypass PIN check and authenticate</muted>"
+      - "<dark_gray>•</dark_gray> <neon>/nexus 2fa-reset [player]</neon> <muted>— remove a player's 2FA (console only)</muted>"
       - "<dark_gray>•</dark_gray> <neon>/nexus reload</neon> <muted>— reload configuration and language</muted>"
     reloaded: "<prefix> <success>Configuration and messages reloaded.</success>"
     reloaded-restart: "<prefix> <success>Configuration reloaded.</success> <muted>Database, hashing, resource-pack, branding (pack visuals) and audit changes require a full server restart.</muted>"
@@ -203,6 +250,9 @@ command:
     delete-failed: "<prefix> <danger>Account for <player> could not be deleted. Check the console.</danger>"
     not-found: "<prefix> <danger>No registered account found for <player>.</danger>"
     not-online: "<prefix> <danger><player> is not currently online.</danger>"
+    2fa-reset: "<prefix> <success>Two-factor authentication for <player> has been removed.</success>"
+    2fa-none: "<prefix> <muted><player> does not have two-factor authentication.</muted>"
+    console-only: "<prefix> <danger>This command can only be run from the server console.</danger>"
     error: "<prefix> <danger>Operation failed: <error></danger>"
     info:
       - "<prefix> <glow><player></glow> <muted>Account Details</muted>"

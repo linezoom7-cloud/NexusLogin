@@ -13,6 +13,8 @@ import dev.nexus.login.pack.PackService;
 import dev.nexus.login.proxy.ProxyContext;
 import dev.nexus.login.proxy.ProxyLink;
 import dev.nexus.login.security.PasswordHasher;
+import dev.nexus.login.totp.TotpRepository;
+import dev.nexus.login.totp.TwoFactorService;
 import dev.nexus.login.security.VerificationResult;
 import dev.nexus.login.ui.AuthEffects;
 import dev.nexus.login.ui.Messages;
@@ -80,6 +82,8 @@ public final class AuthService {
     private volatile AuthSettings settings;
     private volatile PinPolicy pinPolicy;
     private volatile boolean premiumActive;
+    /** İki adımlı doğrulama; kapalıysa null. */
+    private volatile @Nullable TwoFactorService twoFactor;
     /** Velocity modu: proxy bağlantısı; tek sunucu modunda null. */
     private volatile @Nullable ProxyLink proxy;
     /** Proxy her bağlantıda STATE gönderir; bu süre içinde gelmezse oyuncu atılır (fail-closed). */
@@ -339,7 +343,7 @@ public final class AuthService {
             return;
         }
         if (account != null && account.hasPassword() && sessions.consumeRemembered(session.uuid(), session.ip())) {
-            completeLogin(player, session, LoginKind.REMEMBERED);
+            afterFirstFactor(player, session, LoginKind.REMEMBERED);
             return;
         }
 
@@ -384,7 +388,7 @@ public final class AuthService {
                             return;
                         }
                         session.account(created);
-                        completeLogin(player, session, LoginKind.PREMIUM);
+                        afterFirstFactor(player, session, LoginKind.PREMIUM);
                     }, executors.mainThread());
             return;
         }
@@ -392,7 +396,7 @@ public final class AuthService {
             session.account(account.withPremium(true));
             logFailure(accounts.setPremium(session.uuid(), true), "premium işareti");
         }
-        completeLogin(player, session, LoginKind.PREMIUM);
+        afterFirstFactor(player, session, LoginKind.PREMIUM);
     }
 
     public void onPackStatus(Player player, UUID packId, PlayerResourcePackStatusEvent.Status status) {
@@ -555,7 +559,11 @@ public final class AuthService {
             return;
         }
         if (!menu.mode().isGate()) {
-            // İsteğe bağlı PIN değiştirme menüsü: kapatınca iptal.
+            // İsteğe bağlı PIN değiştirme / 2FA menüsü: kapatınca iptal (bekleyen secret silinir).
+            TwoFactorService tf = twoFactor;
+            if (tf != null && menu.mode() == PinMenuMode.TOTP_ENROLL) {
+                tf.cancelEnroll(player.getUniqueId());
+            }
             menu.wipe();
             session.menu(null);
             return;
@@ -611,7 +619,10 @@ public final class AuthService {
 
     private void submit(Player player, AuthSession session, PinMenu menu, char[] pin) {
         switch (menu.mode()) {
-            case LOGIN -> verifyCurrent(player, session, menu, pin, () -> completeLogin(player, session, LoginKind.PIN));
+            case LOGIN -> verifyCurrent(player, session, menu, pin, () -> afterFirstFactor(player, session, LoginKind.PIN));
+            case TOTP_VERIFY -> verifyCode(player, session, menu, pin);
+            case TOTP_ENROLL_GATE, TOTP_ENROLL -> confirmEnroll(player, session, menu, pin);
+            case TOTP_DISABLE -> disableWithCode(player, session, menu, pin);
             case CHANGE_CURRENT -> verifyCurrent(player, session, menu, pin, () -> menu.mode(PinMenuMode.CHANGE_NEW));
             case REGISTER -> acceptFirstEntry(player, menu, pin, PinMenuMode.REGISTER_CONFIRM);
             case CHANGE_NEW -> acceptFirstEntry(player, menu, pin, PinMenuMode.CHANGE_CONFIRM);
@@ -752,7 +763,7 @@ public final class AuthService {
                     }
                     session.account(account);
                     sessions.invalidateRemembered(session.uuid());
-                    completeLogin(player, session, LoginKind.REGISTER);
+                    afterFirstFactor(player, session, LoginKind.REGISTER);
                 }, executors.mainThread());
     }
 
@@ -802,6 +813,280 @@ public final class AuthService {
                     logger.log(Level.WARNING, "Arka plan işlemi başarısız (hash yükseltme)", error);
                     return null;
                 });
+    }
+
+    // ═════════════════════════ iki adımlı doğrulama ═════════════════════════
+
+    /** Bu izni taşıyan oyuncu 2FA kurmadan giriş yapamaz ve 2FA'yı kapatamaz. */
+    public static final String TWO_FACTOR_REQUIRED = "nexuslogin.2fa.required";
+
+    /**
+     * Birinci faktör (PIN, kayıt, beni hatırla, premium) geçti. 2FA'lı hesapta kod istenir; hata sayacı
+     * burada SIFIRLANMAZ, yalnızca kod da doğru girilince (completeLogin) sıfırlanır. Aksi halde PIN'i
+     * bilen saldırgan her bağlantıda sayacı temizleyip sınırsız kod deneyebilirdi.
+     */
+    private void afterFirstFactor(Player player, AuthSession session, LoginKind kind) {
+        TwoFactorService tf = twoFactor;
+        if (tf == null) {
+            completeLogin(player, session, kind);
+            return;
+        }
+        PinMenu busyMenu = session.menu();
+        if (busyMenu != null) {
+            busyMenu.busy(true);
+        }
+        tf.lookup(session.uuid()).whenCompleteAsync((entry, error) -> {
+            if (!isCurrent(player, session)) {
+                return;
+            }
+            if (busyMenu != null && session.menu() == busyMenu) {
+                busyMenu.busy(false);
+            }
+            if (error != null) {
+                logger.log(Level.SEVERE, "2FA kaydı okunamadı: " + player.getName(), error);
+                kick(player, "kick.database");
+                return;
+            }
+            if (entry.isPresent()) {
+                if (!tf.available()) {
+                    logger.severe(() -> player.getName() + " 2FA'lı ama TOTP anahtarı yüklenemedi; giriş reddedildi.");
+                    kick(player, "kick.2fa-unavailable");
+                    return;
+                }
+                session.totpEntry(entry.get());
+                session.pendingKind(kind);
+                showCodeMenu(player, session, PinMenuMode.TOTP_VERIFY, "");
+                return;
+            }
+            if (player.hasPermission(TWO_FACTOR_REQUIRED)) {
+                Optional<String> secret = tf.beginEnroll(session.uuid());
+                if (secret.isEmpty()) {
+                    kick(player, "kick.2fa-unavailable");
+                    return;
+                }
+                session.pendingKind(kind);
+                showCodeMenu(player, session, PinMenuMode.TOTP_ENROLL_GATE, groupSecret(secret.get()));
+                return;
+            }
+            completeLogin(player, session, kind);
+        }, executors.mainThread());
+    }
+
+    private void showCodeMenu(Player player, AuthSession session, PinMenuMode mode, String hint) {
+        if (session.state() == AuthState.LOADING) {
+            // Premium/beni hatırla yolunda menü henüz açılmamıştı; kapı menüsü kuralları geçerli olsun.
+            session.state(AuthState.UNAUTHENTICATED);
+        }
+        PinMenu menu = session.menu();
+        if (menu == null || session.waitingForPack()) {
+            session.waitingForPack(false);
+            openMenu(player, session, mode);
+            menu = session.menu();
+        } else {
+            menu.clearInput();
+            menu.mode(mode);
+            effects.menuOpened(player);
+        }
+        if (menu != null) {
+            menu.hint(hint);
+        }
+    }
+
+    /** "ABCDEFGH..." → "ABCD EFGH ..." (elle girişi kolaylaştırır). */
+    private static String groupSecret(String base32) {
+        return base32.replaceAll("(.{4})(?!$)", "$1 ");
+    }
+
+    private void verifyCode(Player player, AuthSession session, PinMenu menu, char[] digits) {
+        String code = new String(digits);
+        wipe(digits);
+        TwoFactorService tf = twoFactor;
+        TotpRepository.Entry entry = session.totpEntry();
+        LoginKind kind = session.pendingKind();
+        if (tf == null || entry == null || kind == null) {
+            kick(player, "kick.internal");
+            return;
+        }
+        menu.busy(true);
+        tf.verify(entry, code).whenCompleteAsync((outcome, error) -> {
+            if (!isCurrent(player, session) || session.menu() != menu) {
+                return;
+            }
+            menu.busy(false);
+            if (error != null) {
+                logger.log(Level.SEVERE, "2FA kodu doğrulanamadı: " + player.getName(), error);
+                fail(player, menu, messages.get("pin.internal-error"));
+                return;
+            }
+            switch (outcome) {
+                case OK -> completeLogin(player, session, kind);
+                case WRONG -> wrongCode(player, session, menu, "2fa.wrong");
+                case REPLAYED -> wrongCode(player, session, menu, "2fa.replayed");
+                case UNAVAILABLE -> kick(player, "kick.2fa-unavailable");
+            }
+            retryStyledRefresh(player, session);
+        }, executors.mainThread());
+    }
+
+    /** Yanlış/tekrar kullanılmış kod, yanlış PIN ile AYNI hesap sayacına yazılır (ayrı bütçe yok). */
+    private void wrongCode(Player player, AuthSession session, PinMenu menu, String messageKey) {
+        LoginThrottle.FailureResult result = throttle.recordFailure(session.ip(), session.uuid());
+        audit.twoFactorFailure(player.getName(), session.uuid(), session.ip(), result.attempts(), result.threshold());
+        if (result.locked()) {
+            long minutes = result.lock().minutes();
+            audit.lockout(player.getName(), session.uuid(), session.ip(), minutes, result.lock().blockCount());
+            kick(player, "kick.locked", Placeholder.unparsed("minutes", String.valueOf(minutes)));
+            return;
+        }
+        fail(player, menu, messages.get(messageKey,
+                Placeholder.unparsed("remaining", String.valueOf(result.remaining()))));
+    }
+
+    private void confirmEnroll(Player player, AuthSession session, PinMenu menu, char[] digits) {
+        String code = new String(digits);
+        wipe(digits);
+        TwoFactorService tf = twoFactor;
+        if (tf == null) {
+            closeMenu(player, session);
+            return;
+        }
+        boolean gate = menu.mode() == PinMenuMode.TOTP_ENROLL_GATE;
+        menu.busy(true);
+        tf.confirmEnroll(session.uuid(), code).whenCompleteAsync((outcome, error) -> {
+            if (!isCurrent(player, session) || session.menu() != menu) {
+                return;
+            }
+            menu.busy(false);
+            if (error != null) {
+                logger.log(Level.SEVERE, "2FA kaydedilemedi: " + player.getName(), error);
+                fail(player, menu, messages.get("pin.internal-error"));
+                return;
+            }
+            switch (outcome) {
+                case OK -> {
+                    audit.admin(player.getName(), "2fa-enable", player.getName());
+                    player.sendMessage(messages.get("2fa.enabled"));
+                    if (gate) {
+                        LoginKind kind = session.pendingKind();
+                        completeLogin(player, session, kind == null ? LoginKind.PIN : kind);
+                    } else {
+                        closeMenu(player, session);
+                    }
+                }
+                case WRONG -> fail(player, menu, messages.get("2fa.enroll-wrong"));
+                case REPLAYED -> fail(player, menu, messages.get("2fa.wait-next"));
+                case UNAVAILABLE -> {
+                    if (gate) {
+                        // Süre doldu: aynı oturumda yeni secret ile yeniden başla.
+                        Optional<String> secret = tf.beginEnroll(session.uuid());
+                        if (secret.isEmpty()) {
+                            kick(player, "kick.2fa-unavailable");
+                            return;
+                        }
+                        menu.hint(groupSecret(secret.get()));
+                        fail(player, menu, messages.get("2fa.enroll-expired"));
+                    } else {
+                        closeMenu(player, session);
+                        player.sendMessage(messages.get("2fa.enroll-expired"));
+                    }
+                }
+            }
+        }, executors.mainThread());
+    }
+
+    private void disableWithCode(Player player, AuthSession session, PinMenu menu, char[] digits) {
+        String code = new String(digits);
+        wipe(digits);
+        TwoFactorService tf = twoFactor;
+        if (tf == null) {
+            closeMenu(player, session);
+            return;
+        }
+        menu.busy(true);
+        tf.lookup(session.uuid())
+                .thenCompose(entry -> entry.isEmpty()
+                        ? CompletableFuture.completedFuture(TwoFactorService.Outcome.UNAVAILABLE)
+                        : tf.verify(entry.get(), code))
+                .thenCompose(outcome -> outcome == TwoFactorService.Outcome.OK
+                        ? tf.disable(session.uuid()).thenApply(ok -> outcome)
+                        : CompletableFuture.completedFuture(outcome))
+                .whenCompleteAsync((outcome, error) -> {
+                    if (!isCurrent(player, session) || session.menu() != menu) {
+                        return;
+                    }
+                    menu.busy(false);
+                    if (error != null || outcome == TwoFactorService.Outcome.UNAVAILABLE) {
+                        if (error != null) {
+                            logger.log(Level.SEVERE, "2FA kapatılamadı: " + player.getName(), error);
+                        }
+                        closeMenu(player, session);
+                        player.sendMessage(messages.get("pin.internal-error"));
+                        return;
+                    }
+                    if (outcome == TwoFactorService.Outcome.OK) {
+                        audit.admin(player.getName(), "2fa-disable", player.getName());
+                        closeMenu(player, session);
+                        player.sendMessage(messages.get("2fa.disabled"));
+                    } else {
+                        fail(player, menu, messages.get(outcome == TwoFactorService.Outcome.REPLAYED
+                                ? "2fa.wait-next" : "2fa.enroll-wrong"));
+                    }
+                }, executors.mainThread());
+    }
+
+    /** /2fa: giriş yapmış oyuncu 2FA'yı kurar veya (zorunlu değilse) kapatır. */
+    public void openTwoFactorMenu(Player player) {
+        AuthSession session = sessions.get(player.getUniqueId());
+        TwoFactorService tf = twoFactor;
+        if (session == null || session.isRestricted()) {
+            player.sendMessage(messages.get("command.must-login"));
+            return;
+        }
+        if (tf == null) {
+            player.sendMessage(messages.get("2fa.server-off"));
+            return;
+        }
+        tf.lookup(player.getUniqueId()).whenCompleteAsync((entry, error) -> {
+            if (!isCurrent(player, session)) {
+                return;
+            }
+            if (error != null) {
+                player.sendMessage(messages.get("pin.internal-error"));
+                return;
+            }
+            if (entry.isPresent()) {
+                if (player.hasPermission(TWO_FACTOR_REQUIRED)) {
+                    player.sendMessage(messages.get("2fa.required-cannot-disable"));
+                    return;
+                }
+                openMenu(player, session, PinMenuMode.TOTP_DISABLE);
+                return;
+            }
+            Optional<String> secret = tf.beginEnroll(player.getUniqueId());
+            if (secret.isEmpty()) {
+                player.sendMessage(messages.get("2fa.server-off"));
+                return;
+            }
+            openMenu(player, session, PinMenuMode.TOTP_ENROLL);
+            PinMenu menu = session.menu();
+            if (menu != null) {
+                menu.hint(groupSecret(secret.get()));
+            }
+        }, executors.mainThread());
+    }
+
+    /** Konsol: oyuncunun 2FA kaydını siler (telefonunu kaybeden oyuncu için). */
+    public CompletableFuture<Boolean> resetTwoFactor(UUID uuid) {
+        TwoFactorService tf = twoFactor;
+        if (tf == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return tf.disable(uuid);
+    }
+
+    /** İki adımlı doğrulamayı açar; yalnızca açılışta, oyuncular girmeden önce. */
+    public void twoFactor(@Nullable TwoFactorService service) {
+        this.twoFactor = service;
     }
 
     // ═════════════════════════ sonuç ═════════════════════════
@@ -1076,6 +1361,10 @@ public final class AuthService {
     }
 
     private void forgetProxy(AuthSession session) {
+        TwoFactorService tf = twoFactor;
+        if (tf != null) {
+            tf.cancelEnroll(session.uuid()); // bekleyen kurulum secret'ı bellekte kalmasın
+        }
         ProxyLink link = proxy;
         ProxyContext context = session.proxyContext();
         if (link != null && context != null) {

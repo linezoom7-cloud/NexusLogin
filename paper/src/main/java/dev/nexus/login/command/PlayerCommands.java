@@ -44,6 +44,7 @@ public final class PlayerCommands implements CommandExecutor {
                     player.sendMessage(messages.get("command.no-account"));
                 }
             }
+            case "2fa" -> auth.openTwoFactorMenu(player);
             default -> {
                 return false;
             }

@@ -44,6 +44,10 @@ public final class AuthSession {
     private boolean awaitingProxy;
     /** AUTHED'in proxy saatine göre son geçerliliği (ms); 0 = proxy modu dışı veya henüz yok. */
     private long proxyExpiresAt;
+    /** Birinci faktör geçti, 2FA kodu bekleniyor: hesabın 2FA kaydı. */
+    private dev.nexus.login.totp.TotpRepository.@Nullable Entry totpEntry;
+    /** Birinci faktörün türü; 2FA tamamlanınca bu türle giriş yazılır. */
+    private @Nullable LoginKind pendingKind;
 
     AuthSession(UUID uuid, String ip, Duration timeout) {
         this.uuid = uuid;
@@ -167,6 +171,22 @@ public final class AuthSession {
 
     void proxyExpiresAt(long value) {
         this.proxyExpiresAt = value;
+    }
+
+    dev.nexus.login.totp.TotpRepository.@Nullable Entry totpEntry() {
+        return totpEntry;
+    }
+
+    void totpEntry(dev.nexus.login.totp.TotpRepository.@Nullable Entry entry) {
+        this.totpEntry = entry;
+    }
+
+    @Nullable LoginKind pendingKind() {
+        return pendingKind;
+    }
+
+    void pendingKind(@Nullable LoginKind kind) {
+        this.pendingKind = kind;
     }
 
     public boolean isExpired(Instant now) {

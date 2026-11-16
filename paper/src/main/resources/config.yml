@@ -190,3 +190,15 @@ velocity:
   enabled: false
   # Bu sunucunun velocity.toml [servers] altındaki adı, birebir aynı (ör. auth, lobby).
   server-name: ""
+
+# İki adımlı doğrulama (TOTP, 1.2.0). Varsayılan kapalı.
+# Açıkken oyuncu /2fa ile Google Authenticator, Aegis, 2FAS vb. bir uygulamayı bağlayabilir;
+# bundan sonra PIN'den sonra 6 haneli kod sorulur. nexuslogin.2fa.required izni olanlar
+# (ör. yetkililer) 2FA kurmadan giremez. Kod yanlışları PIN ile AYNI kaba kuvvet sayacına yazılır.
+# Anahtar: NEXUSLOGIN_TOTP_KEY ortam değişkeni veya plugins/NexusLogin/totp.key (ilk açılışta
+# üretilir). Anahtar kaybolursa tüm 2FA kayıtları kullanılamaz: veritabanından AYRI yedekleyin.
+# Kapatmak (false) kurulmuş 2FA'ları da devre dışı bırakır.
+two-factor:
+  enabled: false
+  # Doğrulayıcı uygulamada görünen ad (':' içeremez).
+  issuer: "NexusLogin"

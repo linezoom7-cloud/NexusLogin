@@ -48,7 +48,7 @@ public final class AdminCommand implements TabExecutor {
     }
 
     private static final List<String> SUBCOMMANDS =
-            List.of("info", "unregister", "resetpass", "unlock", "unlockip", "forcelogin", "reload");
+            List.of("info", "unregister", "resetpass", "unlock", "unlockip", "forcelogin", "2fa-reset", "reload");
 
     private volatile @Nullable AccountRepository accounts;
     private volatile @Nullable AuthService auth;
@@ -139,6 +139,8 @@ public final class AdminCommand implements TabExecutor {
                             // Silinen hesabın kalıcı cezası yeni kayda taşınmasın. Hesabın
                             // bilinen IP cezaları da temizlenir; yoksa oyuncu kilitli kalır.
                             auth.clearThrottle(deleted);
+                            // Yeni hesap eski hesabın 2FA'sını (ve onu kuranın uygulamasını) devralmasın.
+                            auth.resetTwoFactor(deleted.uuid()).exceptionally(e -> false);
                             audit.admin(sender.getName(), sub, deleted.playerName());
                             String key = sub.equals("resetpass")
                                     ? "command.admin.resetpass"
@@ -177,6 +179,28 @@ public final class AdminCommand implements TabExecutor {
                 } else {
                     sender.sendMessage(messages.get("command.already-logged-in"));
                 }
+            }
+            case "2fa-reset" -> {
+                // Ele geçirilmiş bir OP hesabı oyun içinden başkasının 2FA'sını kaldıramasın: yalnız konsol.
+                if (!(sender instanceof org.bukkit.command.ConsoleCommandSender)) {
+                    sender.sendMessage(messages.get("command.admin.console-only"));
+                    return true;
+                }
+                withAccount(sender, target, account -> auth.resetTwoFactor(account.uuid())
+                        .whenCompleteAsync((removed, error) -> {
+                            if (error != null) {
+                                sender.sendMessage(messages.get("command.admin.error",
+                                        Placeholder.unparsed("error", errorMessage(error))));
+                                return;
+                            }
+                            TagResolver name = Placeholder.unparsed("player", account.playerName());
+                            if (removed) {
+                                audit.admin(sender.getName(), "2fa-reset", account.playerName());
+                                sender.sendMessage(messages.get("command.admin.2fa-reset", name));
+                            } else {
+                                sender.sendMessage(messages.get("command.admin.2fa-none", name));
+                            }
+                        }, executors.mainThread()));
             }
             default -> messages.list("command.admin.usage").forEach(sender::sendMessage);
         }
