@@ -121,19 +121,50 @@ public final class SqlLoginAttemptRepository implements LoginAttemptRepository, 
                  ResultSet rs = ps.executeQuery()) {
                 List<LoginAttempt> attempts = new ArrayList<>();
                 while (rs.next()) {
-                    attempts.add(new LoginAttempt(
-                            rs.getString("attempt_key"),
-                            rs.getInt("attempts"),
-                            rs.getLong("window_start"),
-                            rs.getLong("locked_until"),
-                            rs.getInt("block_count"),
-                            rs.getLong("updated_at")));
+                    attempts.add(read(rs));
                 }
                 return attempts;
             } catch (SQLException e) {
                 throw new DataAccessException("Kaba kuvvet sayaçları yüklenemedi: " + e.getMessage(), e);
             }
         }, ioExecutor);
+    }
+
+    @Override
+    public CompletableFuture<List<LoginAttempt>> load(java.util.Collection<String> keys) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (keys.isEmpty()) {
+                return List.of();
+            }
+            String sql = SELECT_ALL + " WHERE attempt_key IN ("
+                    + String.join(", ", java.util.Collections.nCopies(keys.size(), "?")) + ")";
+            try (Connection connection = database.getConnection();
+                 PreparedStatement ps = connection.prepareStatement(sql)) {
+                int i = 1;
+                for (String key : keys) {
+                    ps.setString(i++, key);
+                }
+                List<LoginAttempt> attempts = new ArrayList<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        attempts.add(read(rs));
+                    }
+                }
+                return attempts;
+            } catch (SQLException e) {
+                throw new DataAccessException("Kaba kuvvet sayaçları okunamadı: " + e.getMessage(), e);
+            }
+        }, ioExecutor);
+    }
+
+    private static LoginAttempt read(ResultSet rs) throws SQLException {
+        return new LoginAttempt(
+                rs.getString("attempt_key"),
+                rs.getInt("attempts"),
+                rs.getLong("window_start"),
+                rs.getLong("locked_until"),
+                rs.getInt("block_count"),
+                rs.getLong("updated_at"));
     }
 
     @Override

@@ -12,6 +12,12 @@ public interface LoginAttemptRepository {
     /** Tüm sayaçları yükler (eklenti açılışında, giriş kabul edilmeden önce). */
     CompletableFuture<List<LoginAttempt>> loadAll();
 
+    /**
+     * Yalnızca verilen anahtarların güncel satırlarını okur. Ortak veritabanında başka bir
+     * auth sunucusunun yazdığı sayaçları görmek için kullanılır.
+     */
+    CompletableFuture<List<LoginAttempt>> load(java.util.Collection<String> keys);
+
     /** Güncel durumu yazar. Çağıran thread'i bloklamaz. */
     void save(LoginAttempt attempt);
 

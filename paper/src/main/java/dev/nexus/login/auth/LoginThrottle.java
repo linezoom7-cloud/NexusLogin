@@ -53,6 +53,8 @@ public final class LoginThrottle {
     private final Clock clock;
     private final @Nullable LoginAttemptRepository repository;
     private final Map<String, LoginAttempt> states = new ConcurrentHashMap<>();
+    private static final long PENDING_WRITE_GRACE_MS = 5_000;
+    private volatile boolean shared;
 
     public LoginThrottle(ThrottleSettings settings, Clock clock, @Nullable LoginAttemptRepository repository) {
         this.settings = settings;
@@ -66,6 +68,65 @@ public final class LoginThrottle {
      */
     public void updateSettings(ThrottleSettings newSettings) {
         this.settings = newSettings;
+    }
+
+    /**
+     * Ortak MariaDB kullanan Velocity ağı: aynı sayaçlara birden fazla auth sunucusu yazar.
+     * Açıkken {@link #refresh} her girişte sayaçları veritabanından tazeler.
+     */
+    public void setShared(boolean shared) {
+        this.shared = shared;
+    }
+
+    /**
+     * Shared mode only: pulls the latest counters for this IP/account from the database, so a
+     * player cannot win fresh attempts by reconnecting to another auth server.
+     * Blocks; call it from the async pre-login thread. Returns {@code false} when the database
+     * could not be read; the caller must then refuse the login (fail-closed).
+     */
+    public boolean refresh(String ip, @Nullable UUID uuid, Duration timeout) {
+        if (!shared || repository == null) {
+            return true;
+        }
+        java.util.List<String> keys = new java.util.ArrayList<>(2);
+        if (settings.ipEnabled()) {
+            keys.add(ipKey(ip));
+        }
+        if (uuid != null) {
+            keys.add(accountKey(uuid));
+        }
+        java.util.List<LoginAttempt> fresh;
+        try {
+            fresh = repository.load(keys).get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+        merge(keys, fresh);
+        return true;
+    }
+
+    /** Veritabanındaki satır bellektekinden yeniyse onu alır; başka sunucunun sildiği satırı da siler. */
+    void merge(Collection<String> keys, Collection<LoginAttempt> fresh) {
+        long now = clock.millis();
+        Map<String, LoginAttempt> byKey = new java.util.HashMap<>();
+        for (LoginAttempt attempt : fresh) {
+            byKey.put(attempt.key(), attempt);
+        }
+        for (String key : keys) {
+            LoginAttempt stored = byKey.get(key);
+            states.compute(key, (k, local) -> {
+                if (stored == null) {
+                    // Satır yok: başka sunucu sildi (başarılı giriş / yönetici kilidi açtı). Bizim yazımımız
+                    // henüz kuyrukta olabilir, o yüzden yeni yerel kayıtlar korunur.
+                    // shortcut: kuyruk taşınca düşen bir yazım 5 sn sonra unutulur; taşma loglanır.
+                    return local == null || now - local.updatedAt() < PENDING_WRITE_GRACE_MS ? local : null;
+                }
+                return local == null || stored.updatedAt() > local.updatedAt() ? stored : local;
+            });
+        }
     }
 
     public static String ipKey(String ip) {

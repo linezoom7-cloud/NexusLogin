@@ -283,6 +283,59 @@ class LoginThrottleTest {
         assertTrue(repository.saved.isEmpty(), "ceza seviyesi sıfırlanınca kayıt silinmeli");
     }
 
+    @Test
+    void sharedDatabaseCountsFailuresFromEveryAuthServer() {
+        FakeRepository shared = new FakeRepository();
+        LoginThrottle authA = new LoginThrottle(settings(4, 0), clock, shared);
+        LoginThrottle authB = new LoginThrottle(settings(4, 0), clock, shared);
+        authA.setShared(true);
+        authB.setShared(true);
+        Duration t = Duration.ofSeconds(1);
+
+        // 3 hata A'da, oyuncu B'ye bağlanır: B 4. hatada kilitlemeli (taze 4 hak vermemeli).
+        assertTrue(authA.refresh(IP, ACCOUNT, t));
+        for (int i = 0; i < 3; i++) {
+            authA.recordFailure(IP, ACCOUNT);
+        }
+        clock.advance(Duration.ofSeconds(1));
+        assertTrue(authB.refresh(IP, ACCOUNT, t));
+        assertTrue(authB.recordFailure(IP, ACCOUNT).locked(), "A'daki hatalar B'de sayılmalı");
+
+        // Kilit B'de oluştu; oyuncu A'ya dönerse A da kilidi görmeli.
+        clock.advance(Duration.ofSeconds(1));
+        assertTrue(authA.refresh(IP, ACCOUNT, t));
+        assertTrue(authA.check(IP, ACCOUNT).isPresent(), "B'deki kilit A'da görünmeli");
+
+        // Yönetici B'de kilidi açar: A, bekleme süresi geçince silinen kaydı unutmalı.
+        authB.reset(ACCOUNT, List.of());
+        clock.advance(Duration.ofSeconds(10));
+        assertTrue(authA.refresh(IP, ACCOUNT, t));
+        assertFalse(authA.check(IP, ACCOUNT).isPresent(), "başka sunucuda açılan kilit yayılmalı");
+    }
+
+    @Test
+    void sharedRefreshKeepsFreshLocalWriteAndFailsClosed() {
+        FakeRepository shared = new FakeRepository();
+        LoginThrottle throttle = new LoginThrottle(settings(2, 0), clock, shared);
+        throttle.setShared(true);
+        throttle.recordFailure(IP, ACCOUNT);
+        throttle.recordFailure(IP, ACCOUNT);
+        shared.saved.clear(); // yazım henüz kuyrukta (DB'de yok)
+        assertTrue(throttle.refresh(IP, ACCOUNT, Duration.ofSeconds(1)));
+        assertTrue(throttle.check(IP, ACCOUNT).isPresent(), "yeni yerel kilit korunmalı");
+
+        LoginThrottle broken = new LoginThrottle(settings(2, 0), clock, new FakeRepository() {
+            @Override
+            public CompletableFuture<List<LoginAttempt>> load(Collection<String> keys) {
+                return CompletableFuture.failedFuture(new IllegalStateException("db down"));
+            }
+        });
+        broken.setShared(true);
+        assertFalse(broken.refresh(IP, ACCOUNT, Duration.ofSeconds(1)), "DB okunamazsa giriş reddedilmeli");
+        assertTrue(new LoginThrottle(settings(2, 0), clock, null).refresh(IP, ACCOUNT, Duration.ofSeconds(1)),
+                "paylaşım kapalıyken refresh hiçbir şey yapmaz");
+    }
+
     private static ThrottleSettings settings(int accountThreshold, int ipThreshold) {
         return new ThrottleSettings(Duration.ofMinutes(15), accountThreshold, ipThreshold,
                 Duration.ofMinutes(1), Duration.ofHours(24));
@@ -316,13 +369,25 @@ class LoginThrottleTest {
         }
     }
 
-    private static final class FakeRepository implements LoginAttemptRepository {
+    private static class FakeRepository implements LoginAttemptRepository {
 
         private final Map<String, LoginAttempt> saved = new ConcurrentHashMap<>();
 
         @Override
         public CompletableFuture<List<LoginAttempt>> loadAll() {
             return CompletableFuture.completedFuture(new ArrayList<>(saved.values()));
+        }
+
+        @Override
+        public CompletableFuture<List<LoginAttempt>> load(Collection<String> keys) {
+            List<LoginAttempt> found = new ArrayList<>();
+            for (String key : keys) {
+                LoginAttempt attempt = saved.get(key);
+                if (attempt != null) {
+                    found.add(attempt);
+                }
+            }
+            return CompletableFuture.completedFuture(found);
         }
 
         @Override

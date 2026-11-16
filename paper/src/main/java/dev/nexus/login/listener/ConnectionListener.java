@@ -102,6 +102,11 @@ public final class ConnectionListener implements Listener {
 
         // Kalıcı sayaç: hesap (her zaman) + IP (yapılandırıldıysa). Yeniden bağlanmak
         // veya sunucuyu yeniden başlatmak bu sayacı sıfırlamaz.
+        // Ortak veritabanlı ağda başka auth sunucusundaki hatalar da sayılır; okunamazsa giriş yok.
+        if (!throttle.refresh(ip, event.getUniqueId(), java.time.Duration.ofSeconds(5))) {
+            disallow(event, "kick.not-ready");
+            return;
+        }
         Optional<LoginThrottle.Verdict> lock = throttle.check(ip, event.getUniqueId());
         if (lock.isPresent()) {
             long minutes = lock.get().minutes();
