@@ -42,7 +42,7 @@ public final class Argon2idHasher implements PasswordHasher {
     private final Argon2 argon2;
     private final HashingSettings settings;
     private final Executor executor;
-    private final byte[] pepper;
+    private volatile byte[] pepper;
 
     /**
      * @param cryptoExecutor SINIRLI boyutlu bir executor olmalı (bkz. NexusExecutors#crypto);
@@ -101,10 +101,19 @@ public final class Argon2idHasher implements PasswordHasher {
     }
 
     /**
+     * Açılışta {@link PepperFile} sonucunu uygular. Girişler hazırlık bitmeden kabul edilmediği
+     * için bu, ilk hash'ten önce çağrılır.
+     */
+    public void usePepper(String value) {
+        this.pepper = value.isEmpty() ? new byte[0] : value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
      * Pepper varsa PIN'i HMAC-SHA256 ile bağlar. Pepper yoksa {@code null} döner ve çağıran,
      * eski (pepper'sız) davranışı birebir koruyarak char[] yolunu kullanır.
      */
     private byte @Nullable [] applyPepper(char[] password) {
+        byte[] pepper = this.pepper;
         if (pepper.length == 0) {
             return null;
         }

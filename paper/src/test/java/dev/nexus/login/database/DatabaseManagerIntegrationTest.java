@@ -170,6 +170,34 @@ class DatabaseManagerIntegrationTest {
                 "eklenti klasörü dışına dosya yazılmamalı");
     }
 
+    @Test
+    void metaPutIfAbsentKeepsFirstValueAndHasAccountsSeesRows() throws Exception {
+        manager = start("nexus.db");
+        var meta = manager.meta("pepper_check");
+        assertNull(meta.get());
+        assertEquals("first", meta.putIfAbsent("first"));
+        assertEquals("first", meta.putIfAbsent("second"), "yarışı ilk yazan kazanır");
+        assertFalse(manager.hasAccounts());
+        new SqlAccountRepository(manager, DIRECT).create(UUID.randomUUID(), "Steve", "h", false, "127.0.0.1").join();
+        assertTrue(manager.hasAccounts());
+    }
+
+    @Test
+    void attemptRepositoryLoadsOnlyRequestedKeys() {
+        manager = start("nexus.db");
+        var repo = new dev.nexus.login.auth.SqlLoginAttemptRepository(manager, DIRECT, LOGGER);
+        repo.save(new dev.nexus.login.auth.LoginAttempt("acct:a", 2, 10, 0, 1, 20));
+        repo.save(new dev.nexus.login.auth.LoginAttempt("ip:1.2.3.4", 1, 10, 99, 0, 30));
+        repo.save(new dev.nexus.login.auth.LoginAttempt("acct:other", 4, 10, 0, 0, 40));
+        repo.close(); // sıralı yazma kuyruğunu boşaltır
+
+        var found = new dev.nexus.login.auth.SqlLoginAttemptRepository(manager, DIRECT, LOGGER)
+                .load(List.of("acct:a", "ip:1.2.3.4", "acct:missing")).join();
+        assertEquals(2, found.size());
+        assertTrue(found.contains(new dev.nexus.login.auth.LoginAttempt("acct:a", 2, 10, 0, 1, 20)));
+        assertTrue(found.contains(new dev.nexus.login.auth.LoginAttempt("ip:1.2.3.4", 1, 10, 99, 0, 30)));
+    }
+
     private DatabaseManager start(String sqliteFile) {
         DatabaseSettings settings = new DatabaseSettings(DatabaseType.SQLITE, sqliteFile,
                 "localhost", 3306, "nexus", "nexus", "", "disable",

@@ -101,7 +101,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
         this.messages = messages;
         executors = new NexusExecutors(this, settings.hashing().maxConcurrent());
         database = new DatabaseManager(settings.database(), getDataFolder().toPath(), executors.io(), getLogger());
-        PasswordHasher hasher = new Argon2idHasher(settings.hashing(), executors.crypto());
+        Argon2idHasher hasher = new Argon2idHasher(settings.hashing(), executors.crypto());
         AccountRepository accounts = new SqlAccountRepository(database, executors.io());
         pack = new PackService(settings.pack(), messages, getLogger(), settings.branding());
         pack.setExportDirectory(getDataFolder().toPath().resolve("pack"));
@@ -109,6 +109,9 @@ public final class NexusLoginPlugin extends JavaPlugin {
         SessionManager sessions = new SessionManager();
         attempts = new SqlLoginAttemptRepository(database, executors.io(), getLogger());
         throttle = new LoginThrottle(settings.auth().throttle(), Clock.systemUTC(), attempts);
+        // Velocity + MariaDB: birden fazla auth sunucusu aynı sayaçları paylaşabilir.
+        throttle.setShared(settings.velocity().enabled()
+                && settings.database().type() == dev.nexus.login.database.DatabaseType.MARIADB);
         audit = new AuthAudit(getDataFolder().toPath(), getLogger(), settings.audit());
         effects = new AuthEffects(this, messages);
         auth = new AuthService(this, accounts, hasher, executors, sessions, throttle, audit, effects, messages,
@@ -158,6 +161,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
                 .thenAccept(throttle::load)
                 .thenRun(() -> attempts.purgeOlderThan(
                         System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)))
+                .thenCompose(v -> setupPepper(settings, hasher))
                 .thenCompose(v -> hasher.benchmark())
                 .thenAccept(duration -> getLogger().info(() -> "Argon2id hazır — tek hash "
                         + duration.toMillis() + " ms (hedef: 200-500 ms)."))
@@ -288,10 +292,6 @@ public final class NexusLoginPlugin extends JavaPlugin {
                         + "sorulmadan giriş yapar (ikinci faktör yok).");
             }
         }
-        if (settings.hashing().pepper().isEmpty()) {
-            getLogger().warning("security.argon2.pepper boş: veritabanı sızarsa PIN hash'leri pepper "
-                    + "olmadan çevrimdışı kırılabilir. En az 16 karakterlik rastgele bir değer ayarlayın.");
-        }
     }
 
     /**
@@ -332,6 +332,20 @@ public final class NexusLoginPlugin extends JavaPlugin {
      * varken anahtar yoksa yeni anahtar ÜRETİLMEZ (tüm kayıtlar çöpe giderdi): 2FA'lı hesaplar girişte
      * reddedilir, diğerleri etkilenmez (fail-closed).
      */
+    /** Pepper'ı config/pepper.key'den seçer; yeni kurulumda üretir. Hata = güvenlik kilidi (fail-closed). */
+    private CompletableFuture<Void> setupPepper(PluginSettings settings, Argon2idHasher hasher) {
+        java.nio.file.Path folder = getDataFolder().toPath();
+        return CompletableFuture.runAsync(() -> {
+            try {
+                hasher.usePepper(dev.nexus.login.security.PepperFile.resolve(folder, settings.hashing().pepper(),
+                        database.hasAccounts(), database.meta(dev.nexus.login.security.PepperFile.META_KEY),
+                        new java.security.SecureRandom(), getLogger()));
+            } catch (java.io.IOException | java.sql.SQLException e) {
+                throw new IllegalStateException("pepper hazırlanamadı: " + e.getMessage(), e);
+            }
+        }, executors.io());
+    }
+
     private CompletableFuture<Void> setupTwoFactor(PluginSettings settings, dev.nexus.login.totp.TotpRepository repository) {
         if (!settings.twoFactor().enabled()) {
             // Kapatmak, kurulmuş 2FA'ları da devre dışı bırakır: sessiz bir koruma kaybı olmasın.
@@ -367,7 +381,7 @@ public final class NexusLoginPlugin extends JavaPlugin {
             }
             dev.nexus.login.totp.TwoFactorService service =
                     new dev.nexus.login.totp.TwoFactorService(repository, vault, random, System::currentTimeMillis);
-            auth.twoFactor(service);
+            auth.twoFactor(service, settings.twoFactor().issuer());
             auth.registerCleanupTask(service::purgeExpired);
             getLogger().info("İki adımlı doğrulama aktif" + (vault == null ? " (anahtar YOK, fail-closed)." : "."));
         }, executors.mainThread());

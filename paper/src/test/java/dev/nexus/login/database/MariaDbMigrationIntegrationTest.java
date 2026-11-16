@@ -190,6 +190,24 @@ class MariaDbMigrationIntegrationTest {
     }
 
     @Test
+    void pepperMetaAndSharedAttemptReadsWorkOnMariaDb() throws Exception {
+        manager = start();
+        var meta = manager.meta(dev.nexus.login.security.PepperFile.META_KEY);
+        assertNull(meta.get());
+        assertEquals("a", meta.putIfAbsent("a"));
+        assertEquals("a", meta.putIfAbsent("b"), "INSERT IGNORE: ilk değer kalır");
+        assertFalse(manager.hasAccounts());
+
+        var repo = new dev.nexus.login.auth.SqlLoginAttemptRepository(manager, DIRECT, LOGGER);
+        repo.save(new dev.nexus.login.auth.LoginAttempt("acct:x", 3, 1, 0, 1, 5));
+        repo.save(new dev.nexus.login.auth.LoginAttempt("acct:y", 1, 1, 0, 0, 6));
+        repo.close();
+        var found = new dev.nexus.login.auth.SqlLoginAttemptRepository(manager, DIRECT, LOGGER)
+                .load(List.of("acct:x", "acct:none")).join();
+        assertEquals(List.of(new dev.nexus.login.auth.LoginAttempt("acct:x", 3, 1, 0, 1, 5)), found);
+    }
+
+    @Test
     void releaseNameAndDeleteWorkOnMariaDb() {
         manager = start();
         SqlAccountRepository accounts = new SqlAccountRepository(manager, DIRECT);

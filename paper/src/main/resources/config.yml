@@ -93,6 +93,9 @@ auth:
     # 8 hane = 100.000.000 olasılık. Üst sınır 9 (gösterge satırı).
     min-length: 8
     max-length: 9
+    # Yeni PIN'lerde en az 4 farklı rakam iste (ör. 11112222, 12121233 reddedilir).
+    # ÖNERİLİR: true. Varsayılan false yalnızca eski davranışı korumak için; kayıtlı PIN'ler etkilenmez.
+    require-mixed-digits: false
   # Kalıcı, artan cezalı kaba kuvvet koruması. Sayaçlar veritabanında tutulur:
   # yeniden bağlanmak veya sunucuyu yeniden başlatmak sayacı SIFIRLAMAZ.
   throttle:
@@ -166,7 +169,10 @@ security:
   argon2:
     # Sunucu tarafı gizli anahtar (pepper). Boş değilse PIN, Argon2'den önce HMAC-SHA256 ile
     # bağlanır: yalnızca veritabanı sızsa bile hash'ler pepper olmadan çevrimdışı kırılamaz.
-    # En az 16 karakter. Boş = kapalı (geriye dönük uyumlu).
+    # En az 16 karakter. Boş = plugins/NexusLogin/pepper.key kullanılır:
+    #   - Hiç hesap yoksa (yeni kurulum) rastgele bir pepper otomatik üretilir. YEDEKLEYİN.
+    #   - Pepper'sız hesaplar varsa hiçbir şey üretilmez (eski PIN'ler bozulmasın), yalnızca uyarı.
+    #   - Velocity ağında aynı pepper.key dosyasını HER sunucuya kopyalayın.
     # ⚠ Bir kez ayarladıktan sonra DEĞİŞTİRMEYİN: mevcut tüm PIN'ler geçersiz olur.
     pepper: ""
     # Hash başına kullanılacak RAM (KiB). 65536 = 64 MiB. OWASP alt sınırı 19456 (19 MiB).

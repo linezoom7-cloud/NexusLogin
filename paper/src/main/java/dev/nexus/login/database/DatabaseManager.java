@@ -330,6 +330,55 @@ public final class DatabaseManager implements AutoCloseable {
         }
     }
 
+    /** En az bir hesap var mı? Bloklar; G/Ç thread'inden çağrılır. */
+    public boolean hasAccounts() throws SQLException {
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT 1 FROM nexus_accounts LIMIT 1");
+             ResultSet result = statement.executeQuery()) {
+            return result.next();
+        }
+    }
+
+    /** nexus_meta'daki tek bir satır (bloklayan çağrılar; G/Ç thread'inden). */
+    public dev.nexus.login.security.PepperFile.Meta meta(String key) {
+        return new dev.nexus.login.security.PepperFile.Meta() {
+            @Override
+            public @org.jetbrains.annotations.Nullable String get() {
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(
+                             "SELECT meta_value FROM nexus_meta WHERE meta_key = ?")) {
+                    statement.setString(1, key);
+                    try (ResultSet result = statement.executeQuery()) {
+                        return result.next() ? result.getString(1) : null;
+                    }
+                } catch (SQLException e) {
+                    throw new DataAccessException("nexus_meta okunamadı: " + e.getMessage(), e);
+                }
+            }
+
+            @Override
+            public String putIfAbsent(String value) {
+                // İki sunucu aynı anda yazarsa yalnızca biri kazanır; ikisi de kazanan değeri okur.
+                String sql = settings.type() == DatabaseType.MARIADB
+                        ? "INSERT IGNORE INTO nexus_meta (meta_key, meta_value) VALUES (?, ?)"
+                        : "INSERT OR IGNORE INTO nexus_meta (meta_key, meta_value) VALUES (?, ?)";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setString(1, key);
+                    statement.setString(2, value);
+                    statement.executeUpdate();
+                } catch (SQLException e) {
+                    throw new DataAccessException("nexus_meta yazılamadı: " + e.getMessage(), e);
+                }
+                String stored = get();
+                if (stored == null) {
+                    throw new DataAccessException("nexus_meta." + key + " yazıldı ama okunamadı", null);
+                }
+                return stored;
+            }
+        };
+    }
+
     /**
      * Havuzdan bağlantı alır. Ana thread'den ÇAĞRILMAMALIDIR; yalnızca
      * repository'lerin G/Ç executor'ü içinde kullanılır.
