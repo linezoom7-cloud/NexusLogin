@@ -73,21 +73,22 @@ Since 1.1.0 NexusLogin can protect a **single Velocity proxy** with several Pape
 1. Velocity **modern forwarding** (`player-info-forwarding-mode = "MODERN"`), and on every Paper server `config/paper-global.yml` → `proxies.velocity.enabled: true` with the same secret. BungeeCord legacy forwarding is refused.
 2. Put `NexusLogin-Velocity-<version>.jar` into Velocity's `plugins/` and start it once. It creates `plugins/nexuslogin/config.properties` and `plugins/nexuslogin/nexuslogin-sync.key`.
 3. Copy `nexuslogin-sync.key` to `plugins/NexusLogin/` on **every** Paper server. Keep it secret; it is separate from `forwarding.secret`.
-4. On every Paper server, `config.yml`:
+4. On a fresh install NexusLogin creates `plugins/NexusLogin/pepper.key` on the first server that starts (see *Pepper*). Copy that same file to **every** Paper server too; a server with a missing or different `pepper.key` refuses logins and logs why.
+5. On every Paper server, `config.yml`:
    ```yaml
    velocity:
      enabled: true
      server-name: "auth"   # exactly the name in velocity.toml [servers]
    ```
-5. In Velocity's `config.properties`, list the auth servers (`auth-servers=auth`). Players go to the first available one; after login they are sent to `after-login-server` (or the first non-auth server in `try`).
-6. Restart everything and watch the logs: Paper prints `Velocity köprüsü aktif`, Velocity prints the auth servers. If a prerequisite is missing, the Paper server logs why and **stays in single-server mode** (local PIN on that server).
+6. In Velocity's `config.properties`, list the auth servers (`auth-servers=auth`). Players go to the first available one; after login they are sent to `after-login-server` (or the first non-auth server in `try`).
+7. Restart everything and watch the logs: Paper prints `Velocity köprüsü aktif`, Velocity prints the auth servers. If a prerequisite is missing, the Paper server logs why and **stays in single-server mode** (local PIN on that server).
 
 Tested on Velocity 3.4.0, 3.5.1 and 4.3.1 (4.x needs Java 25) with Paper 1.21.11.
 
 ### Network limits (read before going live)
 
 - **Trust boundary:** whoever controls an auth server can approve logins. Keep auth servers as locked down as the proxy.
-- **More than one auth server** is only safe when they all use the **same MariaDB database**; with separate databases someone could register another player's name on the second auth server while the first is down. The proxy refuses to start with several auth servers unless you set `auth-servers-share-database=true`. Failure counters still live in each server's memory, so an attacker who is moved to another auth server after a crash continues with that server's counter.
+- **More than one auth server** is only safe when they all use the **same MariaDB database**; with separate databases someone could register another player's name on the second auth server while the first is down. The proxy refuses to start with several auth servers unless you set `auth-servers-share-database=true`. Since 1.2.1 wrong-PIN counters are shared through that database: each auth server re-reads the player's and the IP's counter when they connect (one small indexed query per join), so moving to another auth server gives no extra attempts. If the database cannot be read the join is refused.
 - **Clocks:** signed messages are valid for ±5 s. Keep proxy and backends in sync with NTP.
 - **Command filter is not the boundary.** Velocity's `forward-commands-if-rate-limited = true` (default) forwards fast repeated commands to the backend without the proxy seeing them; they then reach the auth server, where NexusLogin blocks them. Server switching is enforced separately and cannot be bypassed this way. Setting `forward-commands-if-rate-limited = false` is an optional hardening.
 - **Single proxy only.** Several proxies, Redis and limbo servers are not supported yet.
@@ -106,7 +107,7 @@ two-factor:
   issuer: "NexusLogin"   # name shown in the app; no ':'
 ```
 
-- **Set up:** a logged-in player runs `/2fa` (alias `/totp`). The menu shows a 32-character key; the player adds it in the app as *manual entry* (time-based, 6 digits, 30 s) and types the code it shows. Nothing is stored until that first valid code. `/2fa` again turns it off with a current code.
+- **Set up:** a logged-in player runs `/2fa` (alias `/totp`). The menu shows a 32-character key; the player adds it in the app as *manual entry* (time-based, 6 digits, 30 s) and types the code it shows. Since 1.2.1 the chat also gets a **[Copy setup link]** button with the `otpauth://` link for desktop/password-manager apps (the key is only in the click action, not in the chat text). Closing the menu keeps the pending key for 3 minutes, so the player can copy the link and run `/2fa` again to continue with the same key. Nothing is stored until that first valid code. `/2fa` again turns it off with a current code.
 - **Login:** after the PIN, the keypad asks for the 6-digit code. Codes are typed on the keypad, never in chat or commands.
 - **Required for staff:** players with `nexuslogin.2fa.required` (give it with your permission plugin) must set up 2FA before they can play and cannot turn it off.
 - **Lost phone:** run `nexus 2fa-reset <player>` from the **server console**. It is refused in-game, even for OPs, so a hijacked admin account cannot strip someone else's 2FA. `/nexus unregister` also removes 2FA.
@@ -148,6 +149,8 @@ auth:
   pin:
     min-length: 8
     max-length: 9
+    # Recommended: true. New PINs need at least 4 different digits (existing PINs keep working).
+    require-mixed-digits: false
   # Persistent brute-force protection (stored in the database).
   throttle:
     window-minutes: 15
@@ -176,7 +179,8 @@ security:
     memory-kib: 65536
     iterations: 3
     parallelism: 1
-    # Server-side secret mixed in with HMAC-SHA256 before Argon2 (>= 16 chars, "" = off).
+    # Server-side secret mixed in with HMAC-SHA256 before Argon2 (>= 16 chars).
+    # "" = use plugins/NexusLogin/pepper.key (created automatically on a fresh install).
     # WARNING: never change this after accounts exist — every PIN becomes invalid.
     pepper: ""
 ```
@@ -192,7 +196,11 @@ The PIN gate can only be as strong as the identity data it receives:
 - **Backend servers must not be reachable directly.** With BungeeCord *legacy* forwarding the client supplies its own IP in the handshake, so `ip-threshold`, `max-accounts-per-ip` and `session-remember-minutes` can all be spoofed. Use **Velocity modern forwarding** (or PROXY protocol) and firewall the backend so only the proxy can connect.
 - **`session-remember-minutes` defaults to `0` (off).** Remember-me is keyed by IP + UUID: behind a relay, MCSH, CGNAT or shared NAT every player looks like the same IP, and in offline-mode the UUID is derived from the name. Turning it on in those setups lets someone re-connect as another player without a PIN. Changing the PIN invalidates the remembered session.
 - **`premium-auto-login` defaults to `false`.** It authenticates a player solely from the Minecraft session; a stolen Microsoft/Mojang session or a cracked client that can spoof the handshake has no second factor.
-- **Optional pepper.** Set `security.argon2.pepper` to a random secret of at least 16 characters. Without it, a leaked database can be attacked offline; with it, the attacker also needs the server configuration. Changing the pepper invalidates all existing PINs, so set it once and keep it in a secret manager/backup.
+- **Pepper (set it from day one).** The pepper is a server-side secret mixed into every PIN hash: with it, a leaked database alone cannot be cracked offline. Since 1.2.1:
+  - **Fresh install** (no accounts yet, no pepper configured): NexusLogin generates a random 256-bit pepper in `plugins/NexusLogin/pepper.key` and logs a warning. **Back it up separately from the database.** If it is lost, no PIN can be verified.
+  - **Existing accounts without a pepper:** nothing is generated (that would break every PIN); the server only warns, as before.
+  - `security.argon2.pepper` in `config.yml` still works and wins over `pepper.key`.
+  - A fingerprint of the generated pepper is stored in `nexus_meta`. If `pepper.key` is later missing, replaced, or different on another server of the same network, NexusLogin refuses logins (security lockdown) and logs what to do, instead of rejecting every PIN as wrong.
 - **MariaDB TLS.** Set `database.mariadb.ssl-mode: verify-full` for any database that is not on `localhost`; otherwise credentials and PIN hashes travel in clear text.
 
 ### Known limits (by design)
@@ -206,6 +214,7 @@ The PIN gate can only be as strong as the identity data it receives:
 
 ### Upgrade notes
 
+- **1.2.1:** no schema change. New optional `auth.pin.require-mixed-digits` (default `false`) and a longer list of rejected common PINs (both only for new PINs). Fresh installs get an automatic `pepper.key`; servers that already have accounts are not changed. In a Velocity network with a shared MariaDB, copy `pepper.key` (if one was created) to every server.
 - **1.2.0:** database schema v3 adds the `nexus_totp` table (nothing else changes; the pre-upgrade backup runs as usual). To go back to 1.1.x: stop the server, run `UPDATE nexus_meta SET meta_value = '2' WHERE meta_key = 'schema_version';` and optionally `DROP TABLE nexus_totp;`, then start the old jar. New `two-factor:` section, off by default.
 - **1.2.0 (security):** lockouts now really keep doubling up to `max-lockout-minutes`. Before, from the 16-minute level onward the level dropped again right after each lock, so repeated attacks stayed at about 16-minute locks.
 

@@ -2,7 +2,7 @@
 // :velocity (proxy eklentisi). Yayınlanan jar'lar: paper/build/libs ve velocity/build/libs.
 subprojects {
     group = "dev.nexus"
-    version = "1.2.0"
+    version = "1.2.1"
 
     repositories {
         mavenCentral()
