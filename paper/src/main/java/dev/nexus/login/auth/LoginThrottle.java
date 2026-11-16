@@ -258,7 +258,10 @@ public final class LoginThrottle {
             attempts++;
             if (attempts >= threshold) {
                 int nextBlock = blockCount + 1;
-                return new LoginAttempt(k, 0, now, now + lockMillis(nextBlock), nextBlock, now);
+                long lockedUntil = now + lockMillis(nextBlock);
+                // Pencere kilidin BİTTİĞİ anda başlar: aksi halde pencereden uzun bir kilit bitince gelen ilk
+                // hata "sessiz pencere" sayılır, seviye düşer ve kilit ~pencere süresinde takılı kalırdı.
+                return new LoginAttempt(k, 0, lockedUntil, lockedUntil, nextBlock, now);
             }
             return new LoginAttempt(k, attempts, windowStart, 0, blockCount, now);
         });

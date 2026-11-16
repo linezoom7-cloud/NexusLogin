@@ -70,6 +70,38 @@ class LoginThrottleTest {
     }
 
     @Test
+    void lockKeepsDoublingPastTheWindowWhenAttackerResumesRightAfterEachLock() {
+        // Kilit pencereden (15 dk) uzun olunca, kilit biter bitmez gelen hata "sessiz pencere"
+        // sayılıp seviyeyi düşürüyordu: kilit ~16 dakikada takılı kalıyordu (günde ~450 deneme).
+        LoginThrottle throttle = new LoginThrottle(settings(5, 0), clock, null);
+        long expected = 1;
+        for (int cycle = 0; cycle < 12; cycle++) {
+            LoginThrottle.FailureResult result = null;
+            for (int i = 0; i < 5; i++) {
+                result = throttle.recordFailure(IP, ACCOUNT);
+            }
+            assertTrue(result.locked(), "döngü " + cycle);
+            assertEquals(Math.min(expected, 1440), result.lock().minutes(), "döngü " + cycle);
+            expected *= 2;
+            clock.advance(result.lock().remaining().plusSeconds(1));
+        }
+    }
+
+    @Test
+    void levelDropsOnlyAfterAQuietWindowFollowingTheLock() {
+        LoginThrottle throttle = new LoginThrottle(settings(2, 0), clock, null);
+        throttle.recordFailure(IP, ACCOUNT);
+        assertEquals(1, throttle.recordFailure(IP, ACCOUNT).lock().blockCount());
+
+        // Kilit (1 dk) bitti, sonra tam bir pencere (15 dk) hiç deneme yok: seviye bir kademe düşer.
+        clock.advance(Duration.ofMinutes(1).plusMinutes(15).plusSeconds(2));
+        throttle.recordFailure(IP, ACCOUNT);
+        LoginThrottle.FailureResult next = throttle.recordFailure(IP, ACCOUNT);
+        assertEquals(1, next.lock().blockCount(), "sessiz pencere sonrası seviye 0'dan yeniden 1'e");
+        assertEquals(1, next.lock().minutes());
+    }
+
+    @Test
     void windowExpiryRefillsBudget() {
         LoginThrottle throttle = new LoginThrottle(settings(2, 0), clock, null);
 
