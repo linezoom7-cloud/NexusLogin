@@ -80,6 +80,18 @@ public final class TwoFactorService {
         return Optional.of(Base32.encode(secret));
     }
 
+    /**
+     * /2fa tekrar yazılınca aynı kurulumu sürdürür: oyuncu menüyü kapatıp sohbetteki bağlantıyı
+     * kopyalayabilsin diye bekleyen secret menü kapanınca silinmez (süresi {@link #PENDING_TTL_MS}).
+     */
+    public Optional<String> resumeEnroll(UUID uuid) {
+        Pending p = pending.get(uuid);
+        if (vault == null || p == null || clockMs.getAsLong() > p.expiresAt()) {
+            return Optional.empty();
+        }
+        return Optional.of(Base32.encode(p.secret()));
+    }
+
     public void cancelEnroll(UUID uuid) {
         Pending old = pending.remove(uuid);
         if (old != null) {

@@ -81,6 +81,7 @@ public final class AuthService {
     private final NamespacedKey originKey;
     private volatile AuthSettings settings;
     private volatile PinPolicy pinPolicy;
+    private volatile String totpIssuer = "NexusLogin";
     private volatile boolean premiumActive;
     /** İki adımlı doğrulama; kapalıysa null. */
     private volatile @Nullable TwoFactorService twoFactor;
@@ -111,7 +112,7 @@ public final class AuthService {
         this.pack = pack;
         this.originKey = new NamespacedKey(plugin, "origin");
         this.settings = settings;
-        this.pinPolicy = new PinPolicy(settings.pinMinLength(), settings.pinMaxLength());
+        this.pinPolicy = new PinPolicy(settings.pinMinLength(), settings.pinMaxLength(), settings.pinRequireMixedDigits());
         this.premiumActive = settings.premiumAutoLogin() && Bukkit.getOnlineMode();
     }
 
@@ -131,7 +132,7 @@ public final class AuthService {
      */
     public void applySettings(AuthSettings newSettings) {
         this.settings = newSettings;
-        this.pinPolicy = new PinPolicy(newSettings.pinMinLength(), newSettings.pinMaxLength());
+        this.pinPolicy = new PinPolicy(newSettings.pinMinLength(), newSettings.pinMaxLength(), newSettings.pinRequireMixedDigits());
         this.premiumActive = newSettings.premiumAutoLogin() && Bukkit.getOnlineMode();
     }
 
@@ -559,11 +560,9 @@ public final class AuthService {
             return;
         }
         if (!menu.mode().isGate()) {
-            // İsteğe bağlı PIN değiştirme / 2FA menüsü: kapatınca iptal (bekleyen secret silinir).
-            TwoFactorService tf = twoFactor;
-            if (tf != null && menu.mode() == PinMenuMode.TOTP_ENROLL) {
-                tf.cancelEnroll(player.getUniqueId());
-            }
+            // İsteğe bağlı PIN değiştirme / 2FA menüsü kapandı. Bekleyen 2FA secret'ı BİLEREK silinmez:
+            // oyuncu sohbetteki kurulum bağlantısını kopyalayıp /2fa ile aynı kuruluma döner (180 sn TTL,
+            // hiçbir şey kaydedilmez; çıkışta ve süre dolunca temizlenir).
             menu.wipe();
             session.menu(null);
             return;
@@ -1062,7 +1061,8 @@ public final class AuthService {
                 openMenu(player, session, PinMenuMode.TOTP_DISABLE);
                 return;
             }
-            Optional<String> secret = tf.beginEnroll(player.getUniqueId());
+            Optional<String> resumed = tf.resumeEnroll(player.getUniqueId());
+            Optional<String> secret = resumed.isPresent() ? resumed : tf.beginEnroll(player.getUniqueId());
             if (secret.isEmpty()) {
                 player.sendMessage(messages.get("2fa.server-off"));
                 return;
@@ -1071,6 +1071,9 @@ public final class AuthService {
             PinMenu menu = session.menu();
             if (menu != null) {
                 menu.hint(groupSecret(secret.get()));
+            }
+            if (resumed.isEmpty()) {
+                sendSetupLink(player, secret.get());
             }
         }, executors.mainThread());
     }
@@ -1085,8 +1088,20 @@ public final class AuthService {
     }
 
     /** İki adımlı doğrulamayı açar; yalnızca açılışta, oyuncular girmeden önce. */
-    public void twoFactor(@Nullable TwoFactorService service) {
+    public void twoFactor(@Nullable TwoFactorService service, String issuer) {
         this.twoFactor = service;
+        this.totpIssuer = issuer;
+    }
+
+    /**
+     * Sends a click-to-copy otpauth:// link. The secret is only in the click action, never in the
+     * visible text, so it does not end up in the client's chat log or on a stream.
+     */
+    private void sendSetupLink(Player player, String base32Secret) {
+        String uri = dev.nexus.login.totp.Totp.otpauthUri(totpIssuer, player.getName(), base32Secret);
+        player.sendMessage(messages.get("2fa.setup-link")
+                .clickEvent(net.kyori.adventure.text.event.ClickEvent.copyToClipboard(uri))
+                .hoverEvent(net.kyori.adventure.text.event.HoverEvent.showText(messages.get("2fa.setup-link-hover"))));
     }
 
     // ═════════════════════════ sonuç ═════════════════════════

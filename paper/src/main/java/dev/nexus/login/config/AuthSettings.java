@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
  * @param teleportToSpawn         giriş yapana kadar oyuncuyu dünya spawn'ına ışınlar
  * @param restorePreviousLocation başarılı giriş sonrası oyuncuyu çıktığı eski konumuna döndürür
  * @param hideInventory           giriş yapana kadar envanterdeki eşyaları geçici olarak gizler
+ * @param pinRequireMixedDigits yeni PIN'lerde en az 4 farklı rakam ister
  * @param throttle                kalıcı kaba kuvvet koruması ayarları
  */
 public record AuthSettings(
@@ -27,6 +28,7 @@ public record AuthSettings(
         Duration rememberFor,
         int pinMinLength,
         int pinMaxLength,
+        boolean pinRequireMixedDigits,
         Set<String> allowedCommands,
         boolean premiumAutoLogin,
         boolean teleportToSpawn,
@@ -69,6 +71,8 @@ public record AuthSettings(
                 // 6 hane yalnızca 1.000.000 olasılıktır; veritabanı sızarsa saatler içinde kırılır.
                 s.getInt("pin.min-length", 8),
                 s.getInt("pin.max-length", 9),
+                // Eski config'lerde yok: varsayılan kapalı, mevcut davranış korunur.
+                s.getBoolean("pin.require-mixed-digits", false),
                 s.getStringList("allowed-commands").stream()
                         .map(c -> c.toLowerCase(Locale.ROOT).replace("/", ""))
                         .collect(Collectors.toSet()),

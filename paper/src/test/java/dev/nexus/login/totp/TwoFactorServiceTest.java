@@ -152,6 +152,23 @@ class TwoFactorServiceTest {
     }
 
     @Test
+    void resumeReturnsTheSamePendingSecretUntilItExpires() {
+        TwoFactorService tf = service(vault);
+        UUID uuid = UUID.randomUUID();
+        assertTrue(tf.resumeEnroll(uuid).isEmpty(), "bekleyen kurulum yok");
+        String secret = tf.beginEnroll(uuid).orElseThrow();
+        assertEquals(secret, tf.resumeEnroll(uuid).orElseThrow(), "/2fa tekrar: aynı anahtar");
+        assertEquals(TwoFactorService.Outcome.OK, tf.confirmEnroll(uuid, codeAt(secret, 0)).join());
+        assertTrue(tf.resumeEnroll(uuid).isEmpty(), "onaydan sonra bekleyen secret kalmaz");
+
+        UUID other = UUID.randomUUID();
+        tf.beginEnroll(other);
+        nowMs.addAndGet(TwoFactorService.PENDING_TTL_MS + 1);
+        assertTrue(tf.resumeEnroll(other).isEmpty(), "süresi dolan kurulum sürdürülmez");
+        assertTrue(service(null).resumeEnroll(other).isEmpty(), "anahtar yokken kurulum yok");
+    }
+
+    @Test
     void disableRemovesTheRowAndSecondInsertIsRejected() {
         TwoFactorService tf = service(vault);
         UUID uuid = UUID.randomUUID();

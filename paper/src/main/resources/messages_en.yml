@@ -39,6 +39,7 @@ pin:
   repeated: "<danger>Repeated PINs (111111, 121212) are not allowed.</danger>"
   sequential: "<danger>Sequential PINs (123456, 987654) are not allowed.</danger>"
   common: "<danger>This PIN is too common, please pick another.</danger>"
+  few-digits: "<danger>PIN must contain at least 4 different digits.</danger>"
   ip-limit: "<danger>Maximum account limit reached for this IP (<max>).</danger>"
   internal-error: "<danger>An internal error occurred, please try again.</danger>"
   changed: "<prefix> <success>Your PIN code has been updated.</success>"
@@ -53,6 +54,8 @@ pin:
   disabled: "<prefix> <success>Two-factor authentication is now OFF.</success>"
   server-off: "<prefix> <danger>Two-factor authentication is not enabled on this server.</danger>"
   required-cannot-disable: "<prefix> <danger>Two-factor authentication is required for your rank and cannot be turned off.</danger>"
+  setup-link: "<prefix> <neon><u>[Copy setup link]</u></neon> <muted>for apps that accept otpauth:// links. Close this menu, open chat and click; then type /2fa again (same key, 3 minutes).</muted>"
+  setup-link-hover: "<muted>Copies an otpauth:// link that contains your secret key.</muted> <danger>Never share it.</danger>"
 
 menu:
   title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Lock"

@@ -39,6 +39,7 @@ pin:
   repeated: "<danger>Tekrarlı PIN'ler (111111, 121212) yasak.</danger>"
   sequential: "<danger>Ardışık PIN'ler (123456, 987654) yasak.</danger>"
   common: "<danger>Bu PIN çok yaygın, başka bir tane seç.</danger>"
+  few-digits: "<danger>PIN en az 4 farklı rakam içermeli.</danger>"
   ip-limit: "<danger>Bu IP adresinden en fazla <max> hesap açılabilir.</danger>"
   internal-error: "<danger>Bir hata oluştu, lütfen tekrar dene.</danger>"
   changed: "<prefix> <success>PIN kodun güncellendi.</success>"
@@ -53,6 +54,8 @@ pin:
   disabled: "<prefix> <success>İki adımlı doğrulama KAPALI.</success>"
   server-off: "<prefix> <danger>Bu sunucuda iki adımlı doğrulama açık değil.</danger>"
   required-cannot-disable: "<prefix> <danger>Rütben için iki adımlı doğrulama zorunlu, kapatılamaz.</danger>"
+  setup-link: "<prefix> <neon><u>[Kurulum bağlantısını kopyala]</u></neon> <muted>otpauth:// bağlantısı kabul eden uygulamalar için. Menüyü kapat, sohbeti aç ve tıkla; sonra tekrar /2fa yaz (aynı anahtar, 3 dakika).</muted>"
+  setup-link-hover: "<muted>Gizli anahtarını içeren otpauth:// bağlantısını kopyalar.</muted> <danger>Kimseyle paylaşma.</danger>"
 
 menu:
   title: "<gradient:${gradient}><bold><brand_short></bold></gradient> <dark_gray>•</dark_gray> <muted>Portal Kilidi"
