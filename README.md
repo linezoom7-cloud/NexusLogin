@@ -64,7 +64,7 @@ Outputs: `paper/build/libs/NexusLogin-<version>.jar` (Paper plugin) and `velocit
 
 ## 🔀 Velocity network
 
-Since 1.1.0 NexusLogin can protect a **single Velocity proxy** with several Paper servers. It is **off by default**; without it every Paper server simply runs its own PIN gate.
+Since 1.1.0 NexusLogin can protect a Velocity network with several Paper servers (one or more proxies, see *Network limits*). It is **off by default**; without it every Paper server simply runs its own PIN gate.
 
 **How it works.** Players always land on an *auth server* (a Paper server with NexusLogin) and enter their PIN there. The auth server sends a signed confirmation to the proxy; only then may the player join other servers. Every other server waits for the proxy's signed "authenticated" state and kicks the player if it does not arrive within 5 s, or if the proxy stops refreshing it (every 15 s, valid 45 s). Anything that cannot be verified leaves the player locked (fail-closed).
 
@@ -91,7 +91,7 @@ Tested on Velocity 3.4.0, 3.5.1 and 4.3.1 (4.x needs Java 25) with Paper 1.21.11
 - **More than one auth server** is only safe when they all use the **same MariaDB database**; with separate databases someone could register another player's name on the second auth server while the first is down. The proxy refuses to start with several auth servers unless you set `auth-servers-share-database=true`. Since 1.2.1 wrong-PIN counters are shared through that database: each auth server re-reads the player's and the IP's counter when they connect (one small indexed query per join), so moving to another auth server gives no extra attempts. If the database cannot be read the join is refused.
 - **Clocks:** signed messages are valid for ±5 s. Keep proxy and backends in sync with NTP.
 - **Command filter is not the boundary.** Velocity's `forward-commands-if-rate-limited = true` (default) forwards fast repeated commands to the backend without the proxy seeing them; they then reach the auth server, where NexusLogin blocks them. Server switching is enforced separately and cannot be bypassed this way. Setting `forward-commands-if-rate-limited = false` is an optional hardening.
-- **Single proxy only.** Several proxies, Redis and limbo servers are not supported yet.
+- **Multiple proxies** are supported when every proxy uses the same `nexuslogin-sync.key` and the Paper servers share one MariaDB database. Each proxy only receives state for its own connections. Logging in with the same name from two proxies at once is not blocked at the proxy layer: the second connection still needs the PIN, and if it reaches the same Paper server, Paper's duplicate-login check disconnects one of them. Tested live with two Velocity 3.5.1 proxies (1.2.1). Redis and limbo servers are not supported.
 - **Premium auto-login** behind a proxy uses only the proxy's signed online-mode result; this path has not been tested with real Microsoft accounts.
 - Join/leave messages appear on each backend separately, and a non-auth server briefly applies the login restrictions (and spawn teleport) until the proxy's state arrives.
 
