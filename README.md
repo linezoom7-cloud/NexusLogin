@@ -16,7 +16,7 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 | **Concurrency / TPS** | Heavy synchronous / blocking queries | **Java 21 Virtual Threads (Zero TPS loss)** |
 | **Resource Pack** | Requires ItemsAdder / Oraxen / external host | **Self-contained (Procedural Java 2D + Built-in HTTP)** |
 | **Multi-Language** | Clunky manual editing | **Instant English (`en`) & Turkish (`tr`) switcher** |
-| **Memory Footprint** | Bloated fat JAR (~10 MB) | **Ultra-lightweight (~190 KB JAR)** |
+| **Memory Footprint** | Bloated fat JAR (~10 MB) | **Lightweight (~270 KB JAR)** |
 
 ---
 
@@ -36,17 +36,17 @@ Nexus Login is a modern, enterprise-grade authentication plugin designed specifi
 ## 🛠️ Building & Installation
 
 ### Requirements
-- **Server:** Paper or Purpur **1.21.1+** (1.21 – 1.21.4 supported)
+- **Server:** Paper or Purpur **1.21.1+** (tested on 1.21.11)
 - **Java:** **Java 21 LTS** or newer
 
 ### Building from Source
 ```powershell
 .\gradlew.bat build
 ```
-Output: `paper/build/libs/NexusLogin-<version>.jar` (the server plugin). The project has three Gradle modules: `core` (platform-independent code, bundled into the jars), `paper` and `velocity`. The Velocity module is a skeleton during 1.1.0 development and does **not** protect a proxy yet; do not install it.
+Outputs: `paper/build/libs/NexusLogin-<version>.jar` (Paper plugin) and `velocity/build/libs/NexusLogin-Velocity-<version>.jar` (optional proxy plugin, see [Velocity network](#-velocity-network)). The project has three Gradle modules: `core` (platform-independent code, bundled into both jars), `paper` and `velocity`.
 
 ### Installation
-1. Drop `NexusLogin-1.0.5.jar` into your server's `plugins/` folder.
+1. Drop `NexusLogin-<version>.jar` into your server's `plugins/` folder.
 2. Start the server! Paper will automatically download the required libraries (`HikariCP`, `Argon2-jvm`, `MariaDB Connector/J`) on first boot. This needs internet access to Maven Central; if the download fails the plugin cannot start, and the server then has no login protection from this plugin, so watch the first-boot log.
 3. Nothing else — the resource pack is served over the Minecraft port (`resource-pack.delivery: same-port`). On shared hosting (Pterodactyl / Aternos-like panels) **do not** open port `8164`; it is not needed.
 4. The generated ZIP is also written to `plugins/NexusLogin/pack/nexus-pack.zip`, so you can upload it to any static host if needed.
@@ -59,6 +59,40 @@ Output: `paper/build/libs/NexusLogin-<version>.jar` (the server plugin). The pro
 >   delivery: url
 >   public-url: "https://.../nexus-pack.zip"
 > ```
+
+---
+
+## 🔀 Velocity network
+
+Since 1.1.0 NexusLogin can protect a **single Velocity proxy** with several Paper servers. It is **off by default**; without it every Paper server simply runs its own PIN gate.
+
+**How it works.** Players always land on an *auth server* (a Paper server with NexusLogin) and enter their PIN there. The auth server sends a signed confirmation to the proxy; only then may the player join other servers. Every other server waits for the proxy's signed "authenticated" state and kicks the player if it does not arrive within 5 s, or if the proxy stops refreshing it (every 15 s, valid 45 s). Anything that cannot be verified leaves the player locked (fail-closed).
+
+### Setup
+
+1. Velocity **modern forwarding** (`player-info-forwarding-mode = "MODERN"`), and on every Paper server `config/paper-global.yml` → `proxies.velocity.enabled: true` with the same secret. BungeeCord legacy forwarding is refused.
+2. Put `NexusLogin-Velocity-<version>.jar` into Velocity's `plugins/` and start it once. It creates `plugins/nexuslogin/config.properties` and `plugins/nexuslogin/nexuslogin-sync.key`.
+3. Copy `nexuslogin-sync.key` to `plugins/NexusLogin/` on **every** Paper server. Keep it secret; it is separate from `forwarding.secret`.
+4. On every Paper server, `config.yml`:
+   ```yaml
+   velocity:
+     enabled: true
+     server-name: "auth"   # exactly the name in velocity.toml [servers]
+   ```
+5. In Velocity's `config.properties`, list the auth servers (`auth-servers=auth`). Players go to the first available one; after login they are sent to `after-login-server` (or the first non-auth server in `try`).
+6. Restart everything and watch the logs: Paper prints `Velocity köprüsü aktif`, Velocity prints the auth servers. If a prerequisite is missing, the Paper server logs why and **stays in single-server mode** (local PIN on that server).
+
+Tested on Velocity 3.4.0, 3.5.1 and 4.3.1 (4.x needs Java 25) with Paper 1.21.11.
+
+### Network limits (read before going live)
+
+- **Trust boundary:** whoever controls an auth server can approve logins. Keep auth servers as locked down as the proxy.
+- **More than one auth server** is only safe when they all use the **same MariaDB database**; with separate databases someone could register another player's name on the second auth server while the first is down. The proxy refuses to start with several auth servers unless you set `auth-servers-share-database=true`. Failure counters still live in each server's memory, so an attacker who is moved to another auth server after a crash continues with that server's counter.
+- **Clocks:** signed messages are valid for ±5 s. Keep proxy and backends in sync with NTP.
+- **Command filter is not the boundary.** Velocity's `forward-commands-if-rate-limited = true` (default) forwards fast repeated commands to the backend without the proxy seeing them; they then reach the auth server, where NexusLogin blocks them. Server switching is enforced separately and cannot be bypassed this way. Setting `forward-commands-if-rate-limited = false` is an optional hardening.
+- **Single proxy only.** Several proxies, Redis and limbo servers are not supported yet.
+- **Premium auto-login** behind a proxy uses only the proxy's signed online-mode result; this path has not been tested with real Microsoft accounts.
+- Join/leave messages appear on each backend separately, and a non-auth server briefly applies the login restrictions (and spawn teleport) until the proxy's state arrives.
 
 ---
 
@@ -144,6 +178,8 @@ The PIN gate can only be as strong as the identity data it receives:
 - **MariaDB migrations are not transactional:** MariaDB commits implicitly on `CREATE INDEX`/`ALTER TABLE`, so a failed schema upgrade cannot be rolled back. NexusLogin first copies `nexus_accounts` into `nexus_accounts_backup_v<N>` (keys and indexes kept; tested on MariaDB 11.4). Still take your own dump before upgrading a production database.
 
 ### Upgrade notes
+
+- **1.1.0:** new `velocity:` section in `config.yml`, off by default; configs without it keep working in single-server mode. No database schema change. When building from source the jar is now in `paper/build/libs/`.
 
 - **1.0.4:** `auth.teleport-to-spawn` now defaults to `true` (also for configs that do not contain the key). Players are teleported to spawn while on the login screen and returned to their previous location after login. Set `teleport-to-spawn: false` to keep the old behaviour.
 - **1.0.4:** a player without a login session is treated as restricted (fail-closed). NPC plugins that mark their fake players with the `NPC` metadata (Citizens) are not affected.

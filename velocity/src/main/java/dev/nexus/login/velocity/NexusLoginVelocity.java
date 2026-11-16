@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
  * Proxy kapı bekçisi. Doğrulanmamış oyuncu yalnızca auth sunucularında bulunabilir; AUTHED olmak için
  * auth sunucusunun imzalı AUTH_OK mesajı gerekir. Her hata yolu oyuncuyu kilitli bırakır (fail-closed).
  */
-@Plugin(id = "nexuslogin", name = "NexusLogin", version = "1.1.0-SNAPSHOT",
+@Plugin(id = "nexuslogin", name = "NexusLogin", version = "1.1.0",
         description = "NexusLogin proxy gatekeeper", authors = {"Nexus Development"})
 public final class NexusLoginVelocity {
 
